@@ -4,7 +4,14 @@ import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.StatFs
+import android.util.Log
+import android.webkit.ConsoleMessage
+import android.webkit.CookieManager
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -211,8 +218,18 @@ private fun GogLoginWebView(onDone: () -> Unit, onCancel: () -> Unit) {
                 WebView(ctx).apply {
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
+                    settings.databaseEnabled = true
+                    settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                     settings.userAgentString =
                         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) GOG Galaxy/2.0"
+                    CookieManager.getInstance().setAcceptCookie(true)
+                    CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                    webChromeClient = object : WebChromeClient() {
+                        override fun onConsoleMessage(m: ConsoleMessage): Boolean {
+                            Log.d("BH_GOG", "console: ${m.message()} @${m.sourceId()}:${m.lineNumber()}")
+                            return true
+                        }
+                    }
                     webViewClient = object : WebViewClient() {
                         override fun shouldOverrideUrlLoading(
                             v: WebView, req: WebResourceRequest,
@@ -223,6 +240,19 @@ private fun GogLoginWebView(onDone: () -> Unit, onCancel: () -> Unit) {
                                 return true
                             }
                             return false
+                        }
+                        override fun onPageFinished(v: WebView, url: String) {
+                            Log.d("BH_GOG", "pageFinished: $url")
+                        }
+                        override fun onReceivedError(
+                            v: WebView, req: WebResourceRequest, err: WebResourceError,
+                        ) {
+                            Log.e("BH_GOG", "error ${err.errorCode} ${err.description} url=${req.url}")
+                        }
+                        override fun onReceivedHttpError(
+                            v: WebView, req: WebResourceRequest, resp: WebResourceResponse,
+                        ) {
+                            Log.e("BH_GOG", "httpError ${resp.statusCode} url=${req.url}")
                         }
                     }
                     loadUrl(GogLibrary.AUTH_URL)
