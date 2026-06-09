@@ -62,12 +62,20 @@ public final class GogLibrary {
 
     // ── OAuth login ──────────────────────────────────────────────────────────
 
-    /** GOG implicit-flow auth URL (tokens arrive in the redirect fragment). */
+    /**
+     * GOG implicit-flow auth URL (tokens arrive in the redirect fragment).
+     *
+     * NOTE: deliberately omits {@code layout=client2}. That layout serves the
+     * GOG Galaxy desktop-client embedded login, an iframe that waits for a
+     * parent-window postMessage handshake that doesn't exist in a plain
+     * WebView — so it renders blank white. Without it GOG serves the standard
+     * responsive web login, which works in a WebView.
+     */
     public static final String AUTH_URL =
             "https://auth.gog.com/auth"
             + "?client_id=46899977096215655"
             + "&redirect_uri=https%3A%2F%2Fembed.gog.com%2Fon_login_success%3Forigin%3Dclient"
-            + "&response_type=token&layout=client2";
+            + "&response_type=token";
 
     /** Redirect URL prefix that signals login success. */
     public static final String REDIRECT_PREFIX = "https://embed.gog.com/on_login_success";
