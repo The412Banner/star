@@ -17,6 +17,7 @@ import com.winlator.star.ui.screens.ContainerDetailScreen
 import com.winlator.star.ui.screens.ContainersScreen
 import com.winlator.star.ui.screens.FileManagerScreen
 import com.winlator.star.ui.screens.FragmentScreen
+import com.winlator.star.ui.screens.GogScreen
 import com.winlator.star.ui.screens.SavesScreen
 import com.winlator.star.ui.screens.ShortcutsScreen
 import com.winlator.star.ui.screens.LsfgSettingsScreen
@@ -92,6 +93,10 @@ fun AppNavGraph(
 
         composable(Screen.LsfgSettings.route) {
             LsfgSettingsScreen()
+        }
+
+        composable(Screen.Gog.route) {
+            GogScreen()
         }
     }
 }

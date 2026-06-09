@@ -127,7 +127,13 @@ fun AppDrawerContent(
 
         SectionHeader("Game Stores")
         Screen.storeItems.forEach { screen ->
-            DrawerStoreItem(screen, onLaunchStore)
+            // GOG is now a native Compose screen — route it through the nav graph;
+            // the rest still launch their (Java) store Activities.
+            if (screen == Screen.Gog) {
+                DrawerItem(screen, currentRoute, onNavigate)
+            } else {
+                DrawerStoreItem(screen, onLaunchStore)
+            }
         }
 
         Divider(color = DividerColor, modifier = Modifier.padding(top = 4.dp))
