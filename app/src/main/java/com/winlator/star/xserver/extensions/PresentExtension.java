@@ -144,11 +144,13 @@ public class PresentExtension implements Extension {
         if (window == null) throw new BadWindow(windowId);
 
         if (GPUImage.isSupported() && !mask.isEmpty()) {
-            Drawable content = window.getContent();
-            final Texture oldTexture = content.getTexture();
-            com.winlator.star.renderer.GLRenderer glr = (com.winlator.star.renderer.GLRenderer)client.xServer.getRenderer();
-            glr.xServerView.queueEvent(oldTexture::destroy);
-            content.setTexture(new GPUImage(content.width, content.height));
+            com.winlator.star.renderer.HostRenderer hr = client.xServer.getRenderer();
+            if (hr instanceof com.winlator.star.renderer.GLRenderer) {
+                Drawable content = window.getContent();
+                final Texture oldTexture = content.getTexture();
+                ((com.winlator.star.renderer.GLRenderer)hr).xServerView.queueEvent(oldTexture::destroy);
+                content.setTexture(new GPUImage(content.width, content.height));
+            }
         }
 
         synchronized (events) {
