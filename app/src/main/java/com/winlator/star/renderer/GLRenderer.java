@@ -33,7 +33,7 @@ import java.util.ArrayList;
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
 
-public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindowModificationListener, Pointer.OnPointerMotionListener {
+public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindowModificationListener, Pointer.OnPointerMotionListener, HostRenderer {
 
     public final XServerView xServerView;
     private final XServer xServer;
@@ -52,6 +52,11 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
     private boolean cursorVisible = true;
     private boolean screenOffsetYRelativeToCursor = false;
     private String[] unviewableWMClasses = null;
+
+    @Override
+    public void setUnviewableWMClasses(String classes) {
+        this.unviewableWMClasses = classes != null ? classes.split(";") : null;
+    }
     private float magnifierZoom = 1.0f;
     private boolean magnifierEnabled = true;
     public int surfaceWidth;
@@ -442,6 +447,17 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
     public VertexAttribute getQuadVertices() { return quadVertices; }
     public EffectComposer getEffectComposer (){ return effectComposer; }
     public void setUnviewableWMClasses(String... unviewableWMNames) { this.unviewableWMClasses = unviewableWMNames; }
+
+    // HostRenderer implementation
+    @Override public XServerView getXServerView() { return xServerView; }
+    @Override public void setRenderingEnabled(boolean enabled) {}
+    @Override public void requestRender() { xServerView.requestRender(); }
+    @Override public void forceCleanup() {}
+    @Override public void setFilterMode(int mode) {}
+    @Override public void setFpsWindowId(int id) {}
+    @Override public void setFrameRating(Object fr) {}
+    @Override public int getFpsLimit() { return 0; }
+    @Override public void setFpsLimit(int limit) {}
 
     private static class RenderableWindow {
         public final Drawable content;

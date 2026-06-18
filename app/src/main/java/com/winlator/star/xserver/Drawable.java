@@ -19,6 +19,7 @@ public class Drawable extends XResource {
     private Runnable onDrawListener;
     private Callback<Drawable> onDestroyListener;
     public final Object renderLock = new Object();
+    private boolean directScanout = false;
 
     static {
         System.loadLibrary("winlator");
@@ -46,8 +47,18 @@ public class Drawable extends XResource {
     }
 
     public void setTexture(Texture texture) {
-        if (texture instanceof GPUImage) data = ((GPUImage)texture).getVirtualData();
+        if (texture instanceof GPUImage) {
+            ByteBuffer vd = ((GPUImage)texture).getVirtualData();
+            if (vd != null) data = vd;
+        }
         this.texture = texture;
+    }
+
+    public void refreshDataFromTexture() {
+        if (texture instanceof GPUImage) {
+            ByteBuffer vd = ((GPUImage)texture).getVirtualData();
+            if (vd != null) data = vd;
+        }
     }
 
     public ByteBuffer getData() {
@@ -59,6 +70,14 @@ public class Drawable extends XResource {
             throw new IllegalArgumentException("Attempting to set Drawable.data to null!");
         }
         this.data = data;
+    }
+
+    public void setDirectScanout(boolean value) {
+        this.directScanout = value;
+    }
+
+    public boolean isDirectScanout() {
+        return directScanout;
     }
 
     private short getStride() {
@@ -125,6 +144,8 @@ public class Drawable extends XResource {
         dstY = (short)Mathf.clamp(dstY, 0, this.height-1);
         if ((dstX + width) > this.width) width = (short)(this.width - dstX);
         if ((dstY + height) > this.height) height = (short)(this.height - dstY);
+
+        if (drawable.data == null || this.data == null) return;
 
         if (gcFunction == GraphicsContext.Function.COPY) {
             copyArea(srcX, srcY, dstX, dstY, width, height, drawable.getStride(), this.getStride(), drawable.data, this.data);
@@ -196,6 +217,10 @@ public class Drawable extends XResource {
     private static native void drawLine(short x0, short y0, short x1, short y1, int color, short lineWidth, short stride, ByteBuffer data);
 
     private static native void fromBitmap(Bitmap bitmap, ByteBuffer data);
+
+    public java.nio.ByteBuffer getBuffer() {
+        return this.data;
+    }
 }
 
 //package com.winlator.star.xserver;

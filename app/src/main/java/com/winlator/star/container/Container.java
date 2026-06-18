@@ -59,6 +59,11 @@ public class Container {
     private String drives = DEFAULT_DRIVES;
     private String wineVersion = WineInfo.MAIN_WINE_VERSION.identifier();
     private boolean showFPS;
+    private boolean rendererNative = false;
+    private String rendererPresentMode = "fifo";
+    private String rendererDriverId = "system";
+    private int rendererFilterMode = 0;
+    private boolean rendererSwapRB = false;
     private boolean fullscreenStretched;
     private byte startupSelection = STARTUP_SELECTION_ESSENTIAL;
     private String cpuList;
@@ -392,6 +397,21 @@ public class Container {
     public String getRenderer() { return renderer; }
     public void setRenderer(String renderer) { this.renderer = renderer; }
 
+    public boolean isRendererNative() { return rendererNative; }
+    public void setRendererNative(boolean v) { this.rendererNative = v; }
+    public String getRendererPresentMode() { return rendererPresentMode; }
+    public void setRendererPresentMode(String v) { this.rendererPresentMode = v != null ? v : "fifo"; }
+    public String getRendererDriverId() { return rendererDriverId; }
+    public void setRendererDriverId(String v) { this.rendererDriverId = v != null ? v : ""; }
+    public int getRendererFilterMode() { return rendererFilterMode; }
+    public void setRendererFilterMode(int v) { this.rendererFilterMode = v; }
+    public boolean getRendererSwapRB() { return rendererSwapRB; }
+    public void setRendererSwapRB(boolean v) { this.rendererSwapRB = v; }
+
+    public static String getDefaultVulkanConfig() {
+        return "native=false;presentMode=fifo;driverId=system;filterMode=0;swapRB=false";
+    }
+
     public Iterable<String[]> drivesIterator() {
         return drivesIterator(drives);
     }
@@ -450,6 +470,11 @@ public class Container {
             data.put("controllerMapping", controllerMapping);
             data.put("exclusiveXInput", exclusiveXInput);
             data.put("renderer", renderer);
+            data.put("rendererNative", rendererNative);
+            data.put("rendererPresentMode", rendererPresentMode);
+            if (!rendererDriverId.isEmpty()) data.put("rendererDriverId", rendererDriverId);
+            if (rendererFilterMode != 0) data.put("rendererFilterMode", rendererFilterMode);
+            if (rendererSwapRB) data.put("rendererSwapRB", true);
             if (!WineInfo.isMainWineVersion(wineVersion)) data.put("wineVersion", wineVersion);
             FileUtils.writeString(getConfigFile(), data.toString());
         }
@@ -560,6 +585,21 @@ public class Container {
                     break;
                 case "renderer" :
                     setRenderer(data.getString(key));
+                    break;
+                case "rendererNative" :
+                    rendererNative = data.getBoolean(key);
+                    break;
+                case "rendererPresentMode" :
+                    rendererPresentMode = data.getString(key);
+                    break;
+                case "rendererDriverId":
+                    rendererDriverId = data.getString(key);
+                    break;
+                case "rendererFilterMode" :
+                    rendererFilterMode = data.getInt(key);
+                    break;
+                case "rendererSwapRB":
+                    rendererSwapRB = data.getBoolean(key);
                     break;
             }
         }

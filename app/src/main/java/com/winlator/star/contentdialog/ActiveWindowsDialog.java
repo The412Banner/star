@@ -113,7 +113,8 @@ public class ActiveWindowsDialog extends ContentDialog {
 
         if (tvEmptyMessage != null) tvEmptyMessage.setVisibility(View.GONE);
 
-        GLRenderer renderer = activity.getXServer().getRenderer();
+        com.winlator.star.renderer.HostRenderer _r = activity.getXServer().getRenderer();
+        GLRenderer renderer = _r instanceof GLRenderer ? (GLRenderer)_r : null;
         LayoutInflater inflater = LayoutInflater.from(getContext());
         
         int previewWidth = (int) UnitUtils.dpToPx(240.0f);

@@ -27,11 +27,14 @@ public class WindowManager extends XResourceManager {
     private Window focusedWindow;
     private FocusRevertTo focusRevertTo = FocusRevertTo.NONE;
     private final ArrayList<OnWindowModificationListener> onWindowModificationListeners = new ArrayList<>();
+    private volatile boolean renderingEnabled = true;
 
     public interface OnWindowModificationListener {
         default void onMapWindow(Window window) {}
 
         default void onUnmapWindow(Window window) {}
+        
+        default void onDestroyWindow(Window window) {}
 
         default void onChangeWindowZOrder(Window window) {}
 
@@ -70,6 +73,7 @@ public class WindowManager extends XResourceManager {
         if (window != null && rootWindow.id != id) {
             unmapWindow(window);
             removeAllSubwindowsAndWindow(window);
+            triggerOnDestroyWindow(window);
         }
     }
 
@@ -278,6 +282,10 @@ public class WindowManager extends XResourceManager {
         newParent.addChild(window);
     }
 
+    public void setRenderingEnabled(boolean enabled) {
+        this.renderingEnabled = enabled;
+    }
+
     public Window findPointWindow(short rootX, short rootY) {
         return findPointWindow(rootWindow, rootX, rootY);
     }
@@ -308,6 +316,12 @@ public class WindowManager extends XResourceManager {
         }
     }
 
+    public void triggerOnDestroyWindow(Window window) {
+        for (int i = onWindowModificationListeners.size()-1; i >= 0; i--) {
+            onWindowModificationListeners.get(i).onDestroyWindow(window);
+        }
+    }
+
     private void triggerOnChangeWindowZOrder(Window window) {
         for (int i = onWindowModificationListeners.size()-1; i >= 0; i--) {
             onWindowModificationListeners.get(i).onChangeWindowZOrder(window);
@@ -315,6 +329,7 @@ public class WindowManager extends XResourceManager {
     }
 
     protected void triggerOnUpdateWindowContent(Window window) {
+        if (!renderingEnabled) return;
         for (int i = onWindowModificationListeners.size()-1; i >= 0; i--) {
             onWindowModificationListeners.get(i).onUpdateWindowContent(window);
         }

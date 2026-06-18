@@ -43,6 +43,7 @@ import com.winlator.star.core.AppUtils
 import com.winlator.star.core.DefaultVersion
 import com.winlator.star.core.FileUtils
 import com.winlator.star.core.GPUInformation
+import com.winlator.star.core.KeyValueSet
 import com.winlator.star.core.StringUtils
 import com.winlator.star.core.WineThemeManager
 import androidx.compose.foundation.lazy.items
@@ -78,6 +79,7 @@ fun ContainerDetailScreen(
     var showDxvkDownloadSheet    by remember { mutableStateOf(false) }
     var showVegasDownloadSheet   by remember { mutableStateOf(false) }
     var showVkd3dDownloadSheet   by remember { mutableStateOf(false) }
+    var showVulkanConfig          by remember { mutableStateOf(false) }
 
     // AndroidView references for custom views
     val envVarsViewRef      = remember { mutableStateOf<EnvVarsView?>(null)      }
@@ -150,6 +152,7 @@ fun ContainerDetailScreen(
                             onShowWineD3DConfig = { showWineD3DConfig = true },
                             onShowFpsConfig = { showFpsConfig = true },
                             onShowWineDownloadSheet = { showWineDownloadSheet = true },
+                            onShowVulkanConfig = { showVulkanConfig = true },
                         )
                         WineConfigTab(viewModel, colorPickerViewRef)
                     }
@@ -209,6 +212,14 @@ fun ContainerDetailScreen(
         )
     }
 
+    if (showVulkanConfig) {
+        VulkanSettingsDialog(
+            initialConfig = Container.getDefaultVulkanConfig(),
+            onConfirm = { newConfig -> showVulkanConfig = false },
+            onDismiss = { showVulkanConfig = false }
+        )
+    }
+
     // ── Content download sheets ────────────────────────────────────────────
     if (showWineDownloadSheet) {
         ContentDownloadSheet(
@@ -258,12 +269,99 @@ fun ContainerDetailScreen(
 
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
+internal fun VulkanSettingsDialog(
+    initialConfig: String,
+    onConfirm: (newConfig: String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val cfg = remember { KeyValueSet(initialConfig) }
+    var nativeRender by remember { mutableStateOf(cfg.getBoolean("native", false)) }
+    var presentMode by remember { mutableStateOf(cfg.get("presentMode", "fifo")) }
+    var driverId by remember { mutableStateOf(cfg.get("driverId", "system")) }
+    var filterMode by remember { mutableStateOf(cfg.get("filterMode", "0").toIntOrNull() ?: 0) }
+    var swapRB by remember { mutableStateOf(cfg.getBoolean("swapRB", false)) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.vulkan_settings)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.renderer_native), Modifier.weight(1f))
+                    Switch(checked = nativeRender, onCheckedChange = { nativeRender = it })
+                }
+
+                val presentModes = listOf("fifo", "mailbox", "immediate")
+                val presentModeLabels = listOf(
+                    stringResource(R.string.renderer_present_mode_fifo),
+                    stringResource(R.string.renderer_present_mode_mailbox),
+                    stringResource(R.string.renderer_present_mode_immediate)
+                )
+                val selectedPresentIdx = presentModes.indexOf(presentMode).coerceAtLeast(0)
+                LabeledDropdown(
+                    label = stringResource(R.string.renderer_present_mode),
+                    options = presentModeLabels,
+                    selectedOption = presentModeLabels[selectedPresentIdx],
+                    onSelect = { presentMode = presentModes[presentModeLabels.indexOf(it)] }
+                )
+
+                val drivers = listOf("system", "turnip")
+                val driverLabels = listOf(
+                    stringResource(R.string.renderer_driver_system),
+                    stringResource(R.string.renderer_driver_turnip)
+                )
+                val selectedDriverIdx = drivers.indexOf(driverId).coerceAtLeast(0)
+                LabeledDropdown(
+                    label = stringResource(R.string.renderer_driver_id),
+                    options = driverLabels,
+                    selectedOption = driverLabels[selectedDriverIdx],
+                    onSelect = { driverId = drivers[driverLabels.indexOf(it)] }
+                )
+
+                val filterModes = listOf(0, 1)
+                val filterModeLabels = listOf(
+                    stringResource(R.string.renderer_filter_mode_nearest),
+                    stringResource(R.string.renderer_filter_mode_linear)
+                )
+                val selectedFilterIdx = filterModes.indexOf(filterMode).coerceAtLeast(0)
+                LabeledDropdown(
+                    label = stringResource(R.string.renderer_filter_mode),
+                    options = filterModeLabels,
+                    selectedOption = filterModeLabels[selectedFilterIdx],
+                    onSelect = { filterMode = filterModes[filterModeLabels.indexOf(it)] }
+                )
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.renderer_swap_rb), Modifier.weight(1f))
+                    Switch(checked = swapRB, onCheckedChange = { swapRB = it })
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val config = "native=$nativeRender;presentMode=$presentMode;driverId=$driverId;filterMode=$filterMode;swapRB=$swapRB"
+                onConfirm(config)
+            }) {
+                Text(stringResource(android.R.string.ok))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(android.R.string.cancel))
+            }
+        }
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
 private fun TopLevelFields(
     viewModel: ContainerDetailViewModel,
     onShowGfxConfig: () -> Unit,
     onShowDxvkConfig: () -> Unit,
     onShowWineD3DConfig: () -> Unit,
     onShowFpsConfig: () -> Unit,
+    onShowVulkanConfig: () -> Unit,
     onShowWineDownloadSheet: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -362,12 +460,20 @@ private fun TopLevelFields(
         Spacer(Modifier.height(8.dp))
 
         // Renderer
-        LabeledDropdown(
-            label = stringResource(R.string.renderer),
-            options = viewModel.rendererEntries,
-            selectedOption = viewModel.selectedRenderer,
-            onSelect = { viewModel.selectedRenderer = it }
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            LabeledDropdown(
+                label = stringResource(R.string.renderer),
+                options = viewModel.rendererEntries,
+                selectedOption = viewModel.selectedRenderer,
+                onSelect = { viewModel.selectedRenderer = it },
+                modifier = Modifier.weight(1f)
+            )
+            if (viewModel.selectedRenderer == "Vulkan") {
+                IconButton(onClick = onShowVulkanConfig) {
+                    Icon(Icons.Default.Settings, contentDescription = null)
+                }
+            }
+        }
         Spacer(Modifier.height(8.dp))
 
         // Audio Driver

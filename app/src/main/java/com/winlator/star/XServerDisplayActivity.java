@@ -85,6 +85,7 @@ import com.winlator.star.math.XForm;
 import com.winlator.star.midi.MidiHandler;
 import com.winlator.star.midi.MidiManager;
 import com.winlator.star.renderer.GLRenderer;
+import com.winlator.star.renderer.HostRenderer;
 import com.winlator.star.renderer.effects.CRTEffect;
 import com.winlator.star.renderer.effects.ColorEffect;
 import com.winlator.star.renderer.effects.FXAAEffect;
@@ -1309,7 +1310,9 @@ public class XServerDisplayActivity extends AppCompatActivity {
     private void setupUI() {
         FrameLayout rootView = findViewById(R.id.FLXServerDisplay);
         xServerView = new XServerView(this, xServer);
-        final GLRenderer renderer = xServerView.getRenderer();
+        boolean useVulkan = container != null && "vulkan".equals(container.getRenderer());
+        xServerView.initRenderer(useVulkan);
+        final HostRenderer renderer = xServerView.getRenderer();
         renderer.setCursorVisible(false);
 
         if (shortcut != null) {
@@ -1414,7 +1417,9 @@ public class XServerDisplayActivity extends AppCompatActivity {
         initInlineTabStates(renderer);
     }
 
-    private void initInlineTabStates(GLRenderer renderer) {
+    private void initInlineTabStates(HostRenderer renderer) {
+        if (!(renderer instanceof GLRenderer)) return;
+        GLRenderer glRenderer = (GLRenderer) renderer;
         XServerDialogState ds = XServerDialogState.INSTANCE;
 
         // Input Controls state
@@ -1472,11 +1477,11 @@ public class XServerDisplayActivity extends AppCompatActivity {
         }
 
         // Screen Effects state
-        ColorEffect ce   = (ColorEffect)        renderer.getEffectComposer().getEffect(ColorEffect.class);
-        FXAAEffect  fxaa = (FXAAEffect)         renderer.getEffectComposer().getEffect(FXAAEffect.class);
-        CRTEffect   crt  = (CRTEffect)          renderer.getEffectComposer().getEffect(CRTEffect.class);
-        ToonEffect  toon = (ToonEffect)         renderer.getEffectComposer().getEffect(ToonEffect.class);
-        NTSCCombinedEffect ntsc = (NTSCCombinedEffect) renderer.getEffectComposer().getEffect(NTSCCombinedEffect.class);
+        ColorEffect ce   = (ColorEffect)        glRenderer.getEffectComposer().getEffect(ColorEffect.class);
+        FXAAEffect  fxaa = (FXAAEffect)         glRenderer.getEffectComposer().getEffect(FXAAEffect.class);
+        CRTEffect   crt  = (CRTEffect)          glRenderer.getEffectComposer().getEffect(CRTEffect.class);
+        ToonEffect  toon = (ToonEffect)         glRenderer.getEffectComposer().getEffect(ToonEffect.class);
+        NTSCCombinedEffect ntsc = (NTSCCombinedEffect) glRenderer.getEffectComposer().getEffect(NTSCCombinedEffect.class);
 
         ds.setSeBrightness(ce   != null ? ce.getBrightness() * 100f : 0f);
         ds.setSeContrast  (ce   != null ? ce.getContrast()   * 100f : 0f);
@@ -1499,8 +1504,8 @@ public class XServerDisplayActivity extends AppCompatActivity {
         ds.setSeSelectedProfile(selIdx);
 
         ds.onScreenEffectsApply = (brightness, contrast, gamma, fxaaEn, crtEn, toonEn, ntscEn, profileIndex) -> {
-            if (renderer == null) return;
-            applyScreenEffects(renderer, brightness, contrast, gamma, fxaaEn, crtEn, toonEn, ntscEn);
+            if (glRenderer == null) return;
+            applyScreenEffects(glRenderer, brightness, contrast, gamma, fxaaEn, crtEn, toonEn, ntscEn);
             if (profileIndex > 0 && profileIndex - 1 < seProfileNames.size()) {
                 String name = seProfileNames.get(profileIndex - 1);
                 saveScreenEffectProfile(name, brightness, contrast, gamma, fxaaEn, crtEn, toonEn, ntscEn);
@@ -1511,27 +1516,27 @@ public class XServerDisplayActivity extends AppCompatActivity {
         ds.onInitGraphicsTab = () -> {};
 
         // SGSR state
-        HDREffect hdr = (HDREffect) renderer.getEffectComposer().getEffect(HDREffect.class);
+        HDREffect hdr = (HDREffect) glRenderer.getEffectComposer().getEffect(HDREffect.class);
         ds.setSgsrEnabled(false);
         ds.setSgsrSharpness(50);
         ds.setHdrEnabled(hdr != null);
 
         ds.onSgsrUpdate = (enabled, sharpness, hdrEn) -> {
-            if (renderer == null) return;
-            com.winlator.star.renderer.effects.FSREffect cur = (com.winlator.star.renderer.effects.FSREffect) renderer.getEffectComposer().getEffect(com.winlator.star.renderer.effects.FSREffect.class);
-            if (cur != null) renderer.getEffectComposer().removeEffect(cur);
+            if (glRenderer == null) return;
+            com.winlator.star.renderer.effects.FSREffect cur = (com.winlator.star.renderer.effects.FSREffect) glRenderer.getEffectComposer().getEffect(com.winlator.star.renderer.effects.FSREffect.class);
+            if (cur != null) glRenderer.getEffectComposer().removeEffect(cur);
             if (enabled) {
                 com.winlator.star.renderer.effects.FSREffect newFsr = new com.winlator.star.renderer.effects.FSREffect();
                 newFsr.setLevel((float)sharpness / 25.0f + 1.0f);
                 newFsr.setMode(com.winlator.star.renderer.effects.FSREffect.MODE_SUPER_RESOLUTION);
-                renderer.getEffectComposer().addEffect(newFsr);
+                glRenderer.getEffectComposer().addEffect(newFsr);
             }
-            HDREffect curHdr = (HDREffect) renderer.getEffectComposer().getEffect(HDREffect.class);
-            if (curHdr != null) renderer.getEffectComposer().removeEffect(curHdr);
+            HDREffect curHdr = (HDREffect) glRenderer.getEffectComposer().getEffect(HDREffect.class);
+            if (curHdr != null) glRenderer.getEffectComposer().removeEffect(curHdr);
             if (hdrEn) {
                 HDREffect newHdr = new HDREffect();
                 newHdr.setStrength(1.0f);
-                renderer.getEffectComposer().addEffect(newHdr);
+                glRenderer.getEffectComposer().addEffect(newHdr);
             }
         };
 
@@ -2402,7 +2407,8 @@ return true;
         };
         ds.show(XServerDialogState.ActiveDialog.ACTIVE_WINDOWS);
 
-        GLRenderer renderer = xServerView != null ? xServerView.getRenderer() : null;
+        HostRenderer _r = xServerView != null ? xServerView.getRenderer() : null;
+        GLRenderer renderer = _r instanceof GLRenderer ? (GLRenderer)_r : null;
         if (renderer != null) {
             float density = getResources().getDisplayMetrics().density;
             int previewW = (int)(240 * density);
@@ -2448,7 +2454,8 @@ return true;
     }
 
     private void showScreenEffectsDialog() {
-        GLRenderer r = xServerView != null ? xServerView.getRenderer() : null;
+        HostRenderer _r = xServerView != null ? xServerView.getRenderer() : null;
+        GLRenderer r = _r instanceof GLRenderer ? (GLRenderer)_r : null;
         XServerDialogState ds = XServerDialogState.INSTANCE;
 
         ColorEffect ce   = r != null ? (ColorEffect)        r.getEffectComposer().getEffect(ColorEffect.class)        : null;
@@ -2564,7 +2571,8 @@ return true;
     }
 
     private void showMagnifierOverlay() {
-        GLRenderer r = xServerView != null ? xServerView.getRenderer() : null;
+        HostRenderer _r = xServerView != null ? xServerView.getRenderer() : null;
+        GLRenderer r = _r instanceof GLRenderer ? (GLRenderer)_r : null;
         XServerDialogState ds = XServerDialogState.INSTANCE;
 
         ds.setMagnifierZoom(r != null ? r.getMagnifierZoom() : 1.0f);

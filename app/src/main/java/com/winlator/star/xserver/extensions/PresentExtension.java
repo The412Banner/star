@@ -146,7 +146,8 @@ public class PresentExtension implements Extension {
         if (GPUImage.isSupported() && !mask.isEmpty()) {
             Drawable content = window.getContent();
             final Texture oldTexture = content.getTexture();
-            client.xServer.getRenderer().xServerView.queueEvent(oldTexture::destroy);
+            com.winlator.star.renderer.GLRenderer glr = (com.winlator.star.renderer.GLRenderer)client.xServer.getRenderer();
+            glr.xServerView.queueEvent(oldTexture::destroy);
             content.setTexture(new GPUImage(content.width, content.height));
         }
 
