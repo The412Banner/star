@@ -152,10 +152,15 @@ jobs:
         echo "VERSION=$(grep versionName app/build.gradle | head -1 | cut -d '"' -f 2)" >> $GITHUB_ENV
         echo "BUILD_DATE=$(date +'%Y%m%d')" >> $GITHUB_ENV
 
-    - name: Rename APK
+    - name: Rename APKs
       run: |
-        mv app/build/outputs/apk/debug/app-debug.apk \
-           app/build/outputs/apk/debug/star-nightly-${{ github.event.inputs.release_number }}.apk
+        N="${{ github.event.inputs.release_number }}"
+        mv app/build/outputs/apk/standard/debug/app-standard-debug.apk \
+           app/build/outputs/apk/standard/debug/star-nightly-${N}-standard.apk
+        mv app/build/outputs/apk/ludashi/debug/app-ludashi-debug.apk \
+           app/build/outputs/apk/ludashi/debug/star-nightly-${N}-ludashi.apk
+        mv app/build/outputs/apk/pubg/debug/app-pubg-debug.apk \
+           app/build/outputs/apk/pubg/debug/star-nightly-${N}-pubg.apk
 
     - name: Generate changelog table
       run: |
@@ -186,5 +191,8 @@ jobs:
           ${{ env.CHANGELOG }}
 
           ${{ github.event.inputs.release_notes }}
-        files: app/build/outputs/apk/debug/star-nightly-${{ github.event.inputs.release_number }}.apk
+        files: |
+          app/build/outputs/apk/standard/debug/star-nightly-${{ github.event.inputs.release_number }}-standard.apk
+          app/build/outputs/apk/ludashi/debug/star-nightly-${{ github.event.inputs.release_number }}-ludashi.apk
+          app/build/outputs/apk/pubg/debug/star-nightly-${{ github.event.inputs.release_number }}-pubg.apk
         prerelease: true
