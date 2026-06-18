@@ -15,12 +15,10 @@ public class Downloader {
         try {
             URL url = new URL(address);
             URLConnection connection = url.openConnection();
-            connection.connect();
+            connection.setConnectTimeout(15000);
+            connection.setReadTimeout(30000);
+            InputStream input = connection.getInputStream();
 
-            // download the file
-            InputStream input = url.openStream();
-
-            // Output stream
             OutputStream output = new FileOutputStream(file.getAbsolutePath());
 
             byte[] data = new byte[1024];
@@ -30,10 +28,7 @@ public class Downloader {
                 output.write(data, 0, count);
             }
 
-            // flushing output
             output.flush();
-
-            // closing streams
             output.close();
             input.close();
             return true;
@@ -47,9 +42,9 @@ public class Downloader {
         try {
             URL url = new URL(address);
             URLConnection connection = url.openConnection();
-            connection.connect();
-
-            InputStream input = url.openStream();
+            connection.setConnectTimeout(15000);
+            connection.setReadTimeout(30000);
+            InputStream input = connection.getInputStream();
             BufferedReader reader = new BufferedReader(new InputStreamReader(input));
             StringBuilder sb = new StringBuilder();
             String line = null;

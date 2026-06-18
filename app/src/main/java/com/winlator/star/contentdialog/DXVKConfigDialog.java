@@ -73,6 +73,26 @@ public class DXVKConfigDialog {
         return list;
     }
 
+    public static List<String> loadVegasVersionList(Context context, ContentsManager contentsManager) {
+        String[] original = context.getResources().getStringArray(R.array.vegas_version_entries);
+        List<String> list = new ArrayList<>(Arrays.asList(original));
+
+        // vegas WCP profiles have type CONTENT_TYPE_VEGAS, verName like "vegas-2.7.3"
+        for (ContentProfile profile : contentsManager.getProfiles(ContentProfile.ContentType.CONTENT_TYPE_VEGAS)) {
+            if (profile.verName != null && profile.verName.startsWith("vegas-")) {
+                String ver = profile.verName.substring("vegas-".length());
+                if (!list.contains(ver)) list.add(ver);
+            }
+        }
+
+        return list;
+    }
+
+    public static List<String> loadVegasConfigSourceList(Context context) {
+        String[] original = context.getResources().getStringArray(R.array.vegas_config_source_entries);
+        return new ArrayList<>(Arrays.asList(original));
+    }
+
     public static KeyValueSet parseConfig(Object config) {
         String data = config != null && !config.toString().isEmpty() ? config.toString() : DEFAULT_CONFIG;
         return new KeyValueSet(data);
@@ -80,19 +100,35 @@ public class DXVKConfigDialog {
 
     public static void setEnvVars(Context context, KeyValueSet config, EnvVars envVars) {
         String framerate = config.get("framerate");
-        String content = "";
+        StringBuilder contentBuilder = new StringBuilder();
         if (!framerate.isEmpty() && !framerate.equals("0")) {
-            content += "dxgi.maxFrameRate = " + framerate + "; ";
-            content += "d3d9.maxFrameRate = " + framerate;
+            contentBuilder.append("dxgi.maxFrameRate = ").append(framerate).append("; ");
+            contentBuilder.append("d3d9.maxFrameRate = ").append(framerate);
             envVars.put("DXVK_FRAME_RATE", framerate);
         }
+
+        // Append vegas-specific defaults always — harmless for plain DXVK
+        {
+            if (contentBuilder.length() > 0) contentBuilder.append("; ");
+            contentBuilder.append("dxvk.enableStarProfile = Auto; ");
+            contentBuilder.append("vegas.enableUpscaler = Auto");
+        }
+
+        String content = contentBuilder.toString();
+        if (!content.isEmpty())
+            envVars.put("DXVK_CONFIG", content);
+
         if (!config.get("async").isEmpty() && !config.get("async").equals("0"))
             envVars.put("DXVK_ASYNC", "1");
         if (!config.get("asyncCache").isEmpty() && !config.get("asyncCache").equals("0"))
             envVars.put("DXVK_GPLASYNCCACHE", "1");
-        if (!content.isEmpty())
-            envVars.put("DXVK_CONFIG", content);
         envVars.put("VKD3D_FEATURE_LEVEL", config.get("vkd3dLevel"));
         envVars.put("DXVK_STATE_CACHE_PATH", context.getFilesDir() + "/imagefs/" + ImageFs.CACHE_PATH);
+
+        // DXVK_CONFIG_FILE (config source path, e.g. /storage/emulated/0/dxvk.conf)
+        String configFile = config.get("dxvkConfigFile");
+        if (configFile != null && !configFile.isEmpty() && !configFile.equals("0") && !configFile.equals("None")) {
+            envVars.put("DXVK_CONFIG_FILE", configFile);
+        }
     }
 }

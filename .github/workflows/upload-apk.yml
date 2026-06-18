@@ -1,24 +1,7 @@
-name: Nightly CI Release Build (different pkg)
+name: Upload APK to Actions (no release)
 
 on:
   workflow_dispatch:
-    inputs:
-      release_tag:
-        description: 'Release tag (e.g. 1.7, 1.8)'
-        required: true
-      release_title:
-        description: 'Release title (e.g. Star 1.7)'
-        required: true
-      release_number:
-        description: 'Release number for APK name (e.g. 1.7)'
-        required: true
-
-permissions:
-  contents: write
-
-concurrency:
-  group: release-differentpkg-${{ github.event.inputs.release_tag }}
-  cancel-in-progress: false
 
 jobs:
   build:
@@ -58,12 +41,10 @@ jobs:
       run: |
         git clone --depth 1 -b gamenative-latest https://github.com/joshuatam/JavaSteam javasteam_src
         cd javasteam_src
-
         HW_FILE=$(find . -name "HardwareUtils.java" 2>/dev/null | head -1)
         if [ -n "$HW_FILE" ]; then
           sed -i 's/SystemUtils\.IS_OS_ANDROID/false/g' "$HW_FILE"
         fi
-
         UTILS_FILE=$(find . -name "Utils.java" -path "*/javasteam/*" 2>/dev/null | head -1)
         if [ -n "$UTILS_FILE" ]; then
           sed -i \
@@ -74,51 +55,35 @@ jobs:
             -e 's/SystemUtils\.IS_OS_WINDOWS_11/false/g' \
             "$UTILS_FILE"
         fi
-
         ./gradlew jar --no-daemon 2>&1 | tail -20
-
         MAIN_JAR=""
-        for j in $(find . -name "*.jar" -path "*/build/libs/*" \
-            | grep -v "sources\|javadoc\|test" | sort); do
+        for j in $(find . -name "*.jar" -path "*/build/libs/*" | grep -v "sources\|javadoc\|test" | sort); do
           if jar tf "$j" 2>/dev/null | grep -q "SteamClient.class"; then
             MAIN_JAR="$j"
             break
           fi
         done
         if [ -z "$MAIN_JAR" ]; then
-          MAIN_JAR=$(find . -name "*.jar" -path "*/build/libs/*" \
-            | grep -v "sources\|javadoc\|test" \
-            | while read f; do echo "$(wc -c < "$f") $f"; done \
-            | sort -rn | head -1 | cut -d' ' -f2-)
+          MAIN_JAR=$(find . -name "*.jar" -path "*/build/libs/*" | grep -v "sources\|javadoc\|test" | while read f; do echo "$(wc -c < "$f") $f"; done | sort -rn | head -1 | cut -d' ' -f2-)
         fi
-
-        DD_JAR=$(find . -name "javasteam-depotdownloader-*.jar" -path "*/build/libs/*" \
-          ! -name "*sources*" ! -name "*javadoc*" 2>/dev/null | head -1)
-
+        DD_JAR=$(find . -name "javasteam-depotdownloader-*.jar" -path "*/build/libs/*" ! -name "*sources*" ! -name "*javadoc*" 2>/dev/null | head -1)
         mkdir -p ../app/libs/steam
         cp "$MAIN_JAR" ../app/libs/steam/javasteam.jar
-
-        PROTO_JAR=$(find ~/.gradle/caches -name "protobuf-java-*.jar" \
-          ! -name "*sources*" ! -name "*javadoc*" 2>/dev/null | head -1)
+        PROTO_JAR=$(find ~/.gradle/caches -name "protobuf-java-*.jar" ! -name "*sources*" ! -name "*javadoc*" 2>/dev/null | head -1)
         [ -n "$PROTO_JAR" ] && cp "$PROTO_JAR" ../app/libs/steam/protobuf-java.jar
-
-        LANG3_JAR=$(find ~/.gradle/caches -name "commons-lang3-*.jar" \
-          ! -name "*sources*" ! -name "*javadoc*" 2>/dev/null | sort -V | tail -1)
+        LANG3_JAR=$(find ~/.gradle/caches -name "commons-lang3-*.jar" ! -name "*sources*" ! -name "*javadoc*" 2>/dev/null | sort -V | tail -1)
         if [ -n "$LANG3_JAR" ]; then
           cp "$LANG3_JAR" ../app/libs/steam/commons-lang3.jar
         else
-          wget -q "https://repo1.maven.org/maven2/org/apache/commons/commons-lang3/3.14.0/commons-lang3-3.14.0.jar" \
-            -O ../app/libs/steam/commons-lang3.jar
+          wget -q "https://repo1.maven.org/maven2/org/apache/commons/commons-lang3/3.14.0/commons-lang3-3.14.0.jar" -O ../app/libs/steam/commons-lang3.jar
         fi
-
         if [ -n "$DD_JAR" ] && [ -s "$DD_JAR" ]; then
           cp "$DD_JAR" ../app/libs/steam/javasteam-depotdownloader.jar
           GRADLE_CACHE=~/.gradle/caches/modules-2/files-2.1
           gather_jar() {
             local pattern="$1" dest="$2"
             local found
-            found=$(find "$GRADLE_CACHE" -name "$pattern" \
-              ! -name "*sources*" ! -name "*javadoc*" 2>/dev/null | sort -V | tail -1)
+            found=$(find "$GRADLE_CACHE" -name "$pattern" ! -name "*sources*" ! -name "*javadoc*" 2>/dev/null | sort -V | tail -1)
             [ -n "$found" ] && cp "$found" "$dest"
           }
           gather_jar "ktor-client-cio-jvm-*.jar"            "../app/libs/steam/ktor-client-cio.jar"
@@ -150,10 +115,6 @@ jobs:
         yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --install "ndk;26.1.10909125" "cmake;3.22.1"
         echo "ANDROID_NDK_HOME=$SDK_ROOT/ndk/26.1.10909125" >> $GITHUB_ENV
 
-    - name: Grant execute permission for build script
-      run: chmod +x build-lsfg-android.sh
-    - name: Build LSFG native library
-      run: ./build-lsfg-android.sh
 
     - name: Build with Gradle
       run: ./gradlew :app:${{ matrix.flavor.gradleTask }}
@@ -167,7 +128,7 @@ jobs:
     - name: Rename APK
       run: |
         SRC='${{ matrix.flavor.apkPath }}'
-        DEST="$(dirname "$SRC")/${{ matrix.flavor.apkLabel }}-${{ github.event.inputs.release_number }}.apk"
+        DEST="$(dirname "$SRC")/${{ matrix.flavor.apkLabel }}-${{ env.VERSION }}-${{ env.BUILD_DATE }}-${{ env.SHORT_SHA }}.apk"
         mv "$SRC" "$DEST"
         echo "RELEASE_APK=$DEST" >> $GITHUB_ENV
 
@@ -178,53 +139,3 @@ jobs:
         path: ${{ env.RELEASE_APK }}
         if-no-files-found: error
         retention-days: 7
-
-  # Single release job: runs only after every flavor build succeeds, then
-  # creates/updates the release ONCE with all APKs attached. This avoids the
-  # matrix race where parallel jobs hit action-gh-release on the same tag
-  # simultaneously and one loses with a 422 "must have a valid tag".
-  release:
-    needs: build
-    runs-on: ubuntu-22.04
-    steps:
-    - name: Clone repository
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 20
-
-    - name: Download all APK artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: dist
-        pattern: apk-*
-        merge-multiple: true
-
-    - name: Generate changelog table
-      run: |
-        {
-          echo "## Changelog"
-          echo ""
-          echo "| Commit | Title |"
-          echo "|--------|--------|"
-          git log -n 10 --pretty=format:"| \`%h\` | %s |"
-        } > changelog.md
-
-        {
-          echo "CHANGELOG<<__CHANGELOG_EOF__"
-          cat changelog.md
-          echo ""
-          echo "__CHANGELOG_EOF__"
-        } >> "$GITHUB_ENV"
-
-    - name: Create GitHub Release
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: ${{ github.event.inputs.release_tag }}
-        name: ${{ github.event.inputs.release_title }}
-        body: |
-          <img src="https://github.com/jacojayy/star/blob/main/20260418_134945.png" width="1500" height="500" alt="star" />
-          </p>
-
-          ${{ env.CHANGELOG }}
-        files: dist/*.apk
-        prerelease: true

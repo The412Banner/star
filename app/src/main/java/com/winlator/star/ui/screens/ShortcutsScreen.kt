@@ -20,6 +20,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,7 +46,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddToHomeScreen
-import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.ViewList
@@ -161,16 +161,23 @@ fun ShortcutsScreen(vm: ShortcutsViewModel = viewModel()) {
     var showSortMenu by remember { mutableStateOf(false) }
     var showImportContainerPicker by remember { mutableStateOf(false) }
     var pendingImportContainerIndex by remember { mutableStateOf(-1) }
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var renameDialogName by remember { mutableStateOf("") }
+    var renameDialogContainerIndex by remember { mutableStateOf(-1) }
 
     val importFileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         if (pendingImportContainerIndex >= 0) {
             val result = vm.importShortcut(pendingImportContainerIndex, uri, context)
-            pendingImportContainerIndex = -1
             when (result) {
-                is ImportResult.Success -> Toast.makeText(context, "Shortcut imported.", Toast.LENGTH_SHORT).show()
+                is ImportResult.Success -> {
+                    renameDialogContainerIndex = pendingImportContainerIndex
+                    renameDialogName = result.shortcutName
+                    showRenameDialog = true
+                }
                 is ImportResult.Error -> Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
             }
+            pendingImportContainerIndex = -1
         }
     }
 
@@ -182,9 +189,6 @@ fun ShortcutsScreen(vm: ShortcutsViewModel = viewModel()) {
     // parent's clear when it fires post-commit.
     LaunchedEffect(Unit) {
         topBarActions.value = {
-            IconButton(onClick = { showImportContainerPicker = true }) {
-                Icon(Icons.Filled.FileDownload, contentDescription = "Import shortcut", tint = androidx.compose.ui.graphics.Color.White)
-            }
             IconButton(onClick = { vm.setGridView(!isGridView) }) {
                 Icon(
                     imageVector = if (isGridView) Icons.Filled.ViewList else Icons.Filled.GridView,
@@ -234,7 +238,7 @@ fun ShortcutsScreen(vm: ShortcutsViewModel = viewModel()) {
                         LazyVerticalGrid(
                             columns = GridCells.Adaptive(minSize = 120.dp),
                             modifier = Modifier.fillMaxSize(),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(8.dp),
+                            contentPadding = PaddingValues(8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
@@ -271,6 +275,14 @@ fun ShortcutsScreen(vm: ShortcutsViewModel = viewModel()) {
                 }
             }
         }
+        Button(
+            onClick = { showImportContainerPicker = true },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+        ) {
+            Icon(Icons.Filled.Add, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Add Shortcut")
+        }
     }
 
     // Import container picker
@@ -303,6 +315,40 @@ fun ShortcutsScreen(vm: ShortcutsViewModel = viewModel()) {
             },
             confirmButton = {},
             dismissButton = { TextButton(onClick = { showImportContainerPicker = false }) { Text("Cancel") } },
+        )
+    }
+
+    // Rename after import
+    if (showRenameDialog) {
+        var newName by remember { mutableStateOf(renameDialogName) }
+        AlertDialog(
+            onDismissRequest = { showRenameDialog = false },
+            title = { Text("Rename Shortcut") },
+            text = {
+                OutlinedTextField(
+                    value = newName,
+                    onValueChange = { newName = it },
+                    label = { Text("Shortcut name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val name = newName.trim()
+                    if (name.isNotEmpty()) {
+                        vm.renameImportedShortcut(renameDialogContainerIndex, renameDialogName, name)
+                    }
+                    showRenameDialog = false
+                    Toast.makeText(context, "Shortcut imported.", Toast.LENGTH_SHORT).show()
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showRenameDialog = false
+                    Toast.makeText(context, "Shortcut imported.", Toast.LENGTH_SHORT).show()
+                }) { Text("Skip") }
+            },
         )
     }
 
@@ -538,7 +584,7 @@ private fun ShortcutGridItem(
 
     Box(
         modifier = Modifier
-            .aspectRatio(1f)
+            .aspectRatio(2f / 3f)
             .clip(RoundedCornerShape(8.dp))
             .background(SurfaceColor)
             .combinedClickable(onClick = onRun, onLongClick = { menuExpanded = true }),
@@ -764,6 +810,11 @@ private fun ShortcutSettingsDialogScreen(shortcut: Shortcut, onDismiss: () -> Un
     var showGfxConfig by remember { mutableStateOf(false) }
     var showDxvkConfig by remember { mutableStateOf(false) }
     var showWineD3DConfig by remember { mutableStateOf(false) }
+    var showBox64DownloadSheet by remember { mutableStateOf(false) }
+    var showFexCoreDownloadSheet by remember { mutableStateOf(false) }
+    var showDxvkDownloadSheet by remember { mutableStateOf(false) }
+    var showVegasDownloadSheet by remember { mutableStateOf(false) }
+    var showVkd3dDownloadSheet by remember { mutableStateOf(false) }
 
     // Tab
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -1015,7 +1066,8 @@ private fun ShortcutSettingsDialogScreen(shortcut: Shortcut, onDismiss: () -> Un
                     )
                     OutlinedButton(
                         onClick = {
-                            if (StringUtils.parseIdentifier(selectedDxWrapper).contains("dxvk")) showDxvkConfig = true
+                            val w = StringUtils.parseIdentifier(selectedDxWrapper)
+                            if (w.contains("dxvk") || w.contains("vegas")) showDxvkConfig = true
                             else showWineD3DConfig = true
                         },
                         modifier = Modifier.fillMaxWidth()
@@ -1128,37 +1180,39 @@ private fun ShortcutSettingsDialogScreen(shortcut: Shortcut, onDismiss: () -> Un
                     when (selectedTab) {
                         0 -> ScWinComponentsTab(winComponents)
                         1 -> ScEnvVarsTab(shortcut, envVarsViewRef)
-                        2 -> ScAdvancedTab(
-                            isArm64EC = isArm64EC,
-                            box64Versions = box64Versions,
-                            selectedBox64Version = selectedBox64Version,
-                            onBox64VersionChange = { selectedBox64Version = it },
-                            box64Presets = box64Presets,
-                            selectedBox64PresetIndex = selectedBox64PresetIndex,
-                            onBox64PresetIndexChange = { selectedBox64PresetIndex = it },
-                            fexCoreVersions = fexCoreVersions,
-                            selectedFexCoreVersion = selectedFexCoreVersion,
-                            onFexVersionChange = { selectedFexCoreVersion = it },
-                            fexCorePresets = fexCorePresets,
-                            selectedFexPresetIndex = selectedFexCorePresetIndex,
-                            onFexPresetIndexChange = { selectedFexCorePresetIndex = it },
-                            controlsProfiles = controlsProfiles,
-                            selectedControlsProfileIndex = selectedControlsProfileIndex,
-                            onControlsProfileChange = { selectedControlsProfileIndex = it },
-                            startupSelectionEntries = startupSelectionEntries,
-                            selectedStartupSelection = selectedStartupSelection,
-                            onStartupChange = { selectedStartupSelection = it },
-                            cpuListViewRef = cpuListViewRef,
-                            initialCpuList = shortcut.getExtra("cpuList", shortcut.container.getCPUList(true)),
-                            onCpuListSnapshot = { shortcut.putExtra("cpuList", it) },
-                            sharpnessEffectEntries = sharpnessEffectEntries,
-                            selectedSharpnessEffect = selectedSharpnessEffect,
-                            onSharpnessEffectChange = { selectedSharpnessEffect = it },
-                            sharpnessLevel = sharpnessLevel,
-                            onSharpnessLevelChange = { sharpnessLevel = it },
-                            sharpnessDenoise = sharpnessDenoise,
-                            onSharpnessDenoiseChange = { sharpnessDenoise = it }
-                        )
+         2 -> ScAdvancedTab(
+            isArm64EC = isArm64EC,
+            box64Versions = box64Versions,
+            selectedBox64Version = selectedBox64Version,
+            onBox64VersionChange = { selectedBox64Version = it },
+            box64Presets = box64Presets,
+            selectedBox64PresetIndex = selectedBox64PresetIndex,
+            onBox64PresetIndexChange = { selectedBox64PresetIndex = it },
+            fexCoreVersions = fexCoreVersions,
+            selectedFexCoreVersion = selectedFexCoreVersion,
+            onFexVersionChange = { selectedFexCoreVersion = it },
+            fexCorePresets = fexCorePresets,
+            selectedFexPresetIndex = selectedFexCorePresetIndex,
+            onFexPresetIndexChange = { selectedFexCorePresetIndex = it },
+            controlsProfiles = controlsProfiles,
+            selectedControlsProfileIndex = selectedControlsProfileIndex,
+            onControlsProfileChange = { selectedControlsProfileIndex = it },
+            startupSelectionEntries = startupSelectionEntries,
+            selectedStartupSelection = selectedStartupSelection,
+            onStartupChange = { selectedStartupSelection = it },
+            cpuListViewRef = cpuListViewRef,
+            initialCpuList = shortcut.getExtra("cpuList", shortcut.container.getCPUList(true)),
+            onCpuListSnapshot = { shortcut.putExtra("cpuList", it) },
+            sharpnessEffectEntries = sharpnessEffectEntries,
+            selectedSharpnessEffect = selectedSharpnessEffect,
+            onSharpnessEffectChange = { selectedSharpnessEffect = it },
+            sharpnessLevel = sharpnessLevel,
+            onSharpnessLevelChange = { sharpnessLevel = it },
+            sharpnessDenoise = sharpnessDenoise,
+            onSharpnessDenoiseChange = { sharpnessDenoise = it },
+            onShowBox64DownloadSheet = { showBox64DownloadSheet = true },
+            onShowFexCoreDownloadSheet = { showFexCoreDownloadSheet = true }
+        )
                     }
                 }
 
@@ -1183,12 +1237,16 @@ private fun ShortcutSettingsDialogScreen(shortcut: Shortcut, onDismiss: () -> Un
             onDismiss = { showGfxConfig = false }
         )
     }
+    val isVegasCfg = StringUtils.parseIdentifier(selectedDxWrapper).contains("vegas")
     if (showDxvkConfig) {
         DxvkConfigDialog(
             isArm64EC = isArm64EC,
+            isVegas = isVegasCfg,
             initialConfig = dxWrapperConfig,
             onConfirm = { dxWrapperConfig = it; showDxvkConfig = false },
-            onDismiss = { showDxvkConfig = false }
+            onDismiss = { showDxvkConfig = false },
+            onDownloadDxvk = { if (isVegasCfg) showVegasDownloadSheet = true else showDxvkDownloadSheet = true },
+            onDownloadVkd3d = { showVkd3dDownloadSheet = true }
         )
     }
     if (showWineD3DConfig) {
@@ -1196,6 +1254,41 @@ private fun ShortcutSettingsDialogScreen(shortcut: Shortcut, onDismiss: () -> Un
             initialConfig = dxWrapperConfig,
             onConfirm = { dxWrapperConfig = it; showWineD3DConfig = false },
             onDismiss = { showWineD3DConfig = false }
+        )
+    }
+
+    if (showBox64DownloadSheet) {
+        ContentDownloadSheet(
+            contentType = com.winlator.star.contents.ContentProfile.ContentType.CONTENT_TYPE_BOX64,
+            onDismiss = { showBox64DownloadSheet = false },
+            onContentChanged = {}
+        )
+    }
+    if (showFexCoreDownloadSheet) {
+        ContentDownloadSheet(
+            contentType = com.winlator.star.contents.ContentProfile.ContentType.CONTENT_TYPE_FEXCORE,
+            onDismiss = { showFexCoreDownloadSheet = false },
+            onContentChanged = {}
+        )
+    }
+    if (showDxvkDownloadSheet) {
+        ContentDownloadSheet(
+            contentType = com.winlator.star.contents.ContentProfile.ContentType.CONTENT_TYPE_DXVK,
+            onDismiss = { showDxvkDownloadSheet = false },
+            onContentChanged = {}
+        )
+    }
+    if (showVkd3dDownloadSheet) {
+        ContentDownloadSheet(
+            contentType = com.winlator.star.contents.ContentProfile.ContentType.CONTENT_TYPE_VKD3D,
+            onDismiss = { showVkd3dDownloadSheet = false },
+            onContentChanged = {}
+        )
+    }
+    if (showVegasDownloadSheet) {
+        VegasDownloadSheet(
+            onDismiss = { showVegasDownloadSheet = false },
+            onContentChanged = {}
         )
     }
 }
@@ -1320,7 +1413,9 @@ private fun ScAdvancedTab(
     sharpnessLevel: Int,
     onSharpnessLevelChange: (Int) -> Unit,
     sharpnessDenoise: Int,
-    onSharpnessDenoiseChange: (Int) -> Unit
+    onSharpnessDenoiseChange: (Int) -> Unit,
+    onShowBox64DownloadSheet: () -> Unit = {},
+    onShowFexCoreDownloadSheet: () -> Unit = {},
 ) {
     // Flush legacy CPUListView selection back to the parent (Shortcut extras)
     // before the tab leaves composition, so a tab switch doesn't drop edits.
@@ -1332,12 +1427,24 @@ private fun ScAdvancedTab(
     }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SectionBox(title = "Box64") {
-            LabeledDropdown(
-                label = stringResource(R.string.box64_version),
-                options = box64Versions,
-                selectedOption = box64Versions.firstOrNull { it == selectedBox64Version } ?: selectedBox64Version,
-                onSelect = onBox64VersionChange
-            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                LabeledDropdown(
+                    label = stringResource(R.string.box64_version),
+                    options = box64Versions,
+                    selectedOption = box64Versions.firstOrNull { it == selectedBox64Version } ?: selectedBox64Version,
+                    onSelect = onBox64VersionChange,
+                    modifier = Modifier.weight(1f)
+                )
+                OutlinedButton(
+                    onClick = onShowBox64DownloadSheet,
+                    modifier = Modifier.size(40.dp),
+                    border = androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary),
+                    contentPadding = PaddingValues(0.dp),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(Icons.Default.Settings, contentDescription = "Download Box64", tint = MaterialTheme.colorScheme.primary)
+                }
+            }
             Spacer(Modifier.height(8.dp))
             val presetNames = box64Presets.map { it.name }
             LabeledDropdown(
@@ -1350,12 +1457,24 @@ private fun ScAdvancedTab(
 
         if (isArm64EC) {
             SectionBox(title = "FEXCore") {
-                LabeledDropdown(
-                    label = stringResource(R.string.fexcore_version),
-                    options = fexCoreVersions,
-                    selectedOption = fexCoreVersions.firstOrNull { it == selectedFexCoreVersion } ?: selectedFexCoreVersion,
-                    onSelect = onFexVersionChange
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    LabeledDropdown(
+                        label = stringResource(R.string.fexcore_version),
+                        options = fexCoreVersions,
+                        selectedOption = fexCoreVersions.firstOrNull { it == selectedFexCoreVersion } ?: selectedFexCoreVersion,
+                        onSelect = onFexVersionChange,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedButton(
+                        onClick = onShowFexCoreDownloadSheet,
+                        modifier = Modifier.size(40.dp),
+                        border = androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary),
+                        contentPadding = PaddingValues(0.dp),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(Icons.Default.Settings, contentDescription = "Download FEXCore", tint = MaterialTheme.colorScheme.primary)
+                    }
+                }
                 Spacer(Modifier.height(8.dp))
                 val fexNames = fexCorePresets.map { it.name }
                 LabeledDropdown(

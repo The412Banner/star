@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 object XServerDialogState {
 
     enum class ActiveDialog {
-        NONE, VIBRATION, DEBUG, INPUT_CONTROLS, SCREEN_EFFECTS, ACTIVE_WINDOWS, TASK_MANAGER
+        NONE, VIBRATION, DEBUG, INPUT_CONTROLS, SCREEN_EFFECTS, ACTIVE_WINDOWS
     }
 
     // -------------------------------------------------------------------------
@@ -249,6 +249,13 @@ object XServerDialogState {
     fun interface TmAffinityCallback { fun invoke(pid: Int, mask: Int) }
     @JvmField var onTmSetAffinity: TmAffinityCallback? = null
 
+    fun interface FpsConfigCallback { fun invoke(config: String) }
+
+    // -------------------------------------------------------------------------
+    // Inline tab initialization callbacks
+    // -------------------------------------------------------------------------
+    @JvmField var onInitGraphicsTab: Runnable? = null
+
     // -------------------------------------------------------------------------
     // Reset — call when activity is destroyed or restarted
     // -------------------------------------------------------------------------
@@ -285,7 +292,6 @@ object XServerDialogState {
         _tmMemTitle.value      = "Memory"
         _tmMemInfo.value       = ""
         _tmCount.value         = 0
-
         onMagnifierZoom = null; onMagnifierHide = null
         onFsrUpdate = null
         onVibrationSlotChanged = null
@@ -294,5 +300,6 @@ object XServerDialogState {
         onWindowClick = null
         onTmRefresh = null; onTmDismissed = null; onTmNewTask = null
         onTmBringToFront = null; onTmKillProcess = null; onTmSetAffinity = null
+        onInitGraphicsTab = null
     }
 }

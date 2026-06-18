@@ -3,7 +3,16 @@ package com.winlator.star.ui
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
+enum class TabType {
+    GRAPHICS, HUD, CONTROLS, ADVANCED, TASK_MANAGER
+}
+
 object XServerDrawerState {
+
+    private val _selectedTab = MutableStateFlow(TabType.GRAPHICS)
+    val selectedTab: StateFlow<TabType> = _selectedTab
+
+    fun selectTab(tab: TabType) { _selectedTab.value = tab }
 
     private val _isPaused                = MutableStateFlow(false)
     val isPaused: StateFlow<Boolean>     = _isPaused
@@ -30,6 +39,28 @@ object XServerDrawerState {
     private val _cursorExpanded          = MutableStateFlow(false)
     val cursorExpanded: StateFlow<Boolean> = _cursorExpanded
 
+    // LSFG runtime settings (shared with Graphics Engine overlay)
+    private val _lsfgMultiplier  = MutableStateFlow(2)
+    val lsfgMultiplier: StateFlow<Int> = _lsfgMultiplier
+
+    private val _lsfgQuality     = MutableStateFlow("balanced")
+    val lsfgQuality: StateFlow<String> = _lsfgQuality
+
+    private val _lsfgFlowScale   = MutableStateFlow(100)
+    val lsfgFlowScale: StateFlow<Int> = _lsfgFlowScale
+
+    private val _lsfgMaxLatency  = MutableStateFlow(16)
+    val lsfgMaxLatency: StateFlow<Int> = _lsfgMaxLatency
+
+    private val _lsfgGpuArch     = MutableStateFlow("auto")
+    val lsfgGpuArch: StateFlow<String> = _lsfgGpuArch
+
+    private val _fpsExpanded = MutableStateFlow(false)
+    val fpsExpanded: StateFlow<Boolean> = _fpsExpanded
+
+    private val _fpsConfig = MutableStateFlow("")
+    val fpsConfig: StateFlow<String> = _fpsConfig
+
     // Callbacks wired by XServerDisplayActivity.
     // @JvmField exposes these as public fields so Java can assign them directly.
     // Runnable avoids the kotlin.Unit return-type mismatch for Java void lambdas.
@@ -51,6 +82,9 @@ object XServerDrawerState {
     @JvmField var onMoveCursorToTouchpoint: Runnable? = null
     @JvmField var onRelativeMouseMovement:  Runnable? = null
     @JvmField var onDisableMouse:           Runnable? = null
+    @JvmField var onApplyLsfg:             Runnable? = null
+    @JvmField var onResetLsfg:             Runnable? = null
+    @JvmField var onFpsConfigApply: XServerDialogState.FpsConfigCallback? = null
     var onCursorExpandedChanged: ((Boolean) -> Unit)? = null
 
     // Setters called from Java
@@ -63,6 +97,16 @@ object XServerDrawerState {
     fun setLsfgEnabled(v: Boolean)              { _lsfgEnabled.value = v }
     fun getLsfgEnabled(): Boolean = _lsfgEnabled.value
     fun setCursorExpanded(v: Boolean)          { _cursorExpanded.value = v }
+    fun setLsfgMultiplier(v: Int)       { _lsfgMultiplier.value = v }
+    fun setLsfgQuality(v: String)       { _lsfgQuality.value = v }
+    fun setLsfgFlowScale(v: Int)        { _lsfgFlowScale.value = v }
+    fun setLsfgMaxLatency(v: Int)       { _lsfgMaxLatency.value = v }
+    fun setLsfgGpuArch(v: String)       { _lsfgGpuArch.value = v }
+    fun getLsfgMultiplier(): Int         = _lsfgMultiplier.value
+    fun getLsfgQuality(): String         = _lsfgQuality.value
+    fun getLsfgFlowScale(): Int          = _lsfgFlowScale.value
+    fun getLsfgMaxLatency(): Int         = _lsfgMaxLatency.value
+    fun getLsfgGpuArch(): String         = _lsfgGpuArch.value
 
     fun toggleCursorExpanded() {
         val next = !_cursorExpanded.value
@@ -70,7 +114,12 @@ object XServerDrawerState {
         onCursorExpandedChanged?.invoke(next)
     }
 
+    fun setFpsExpanded(v: Boolean) { _fpsExpanded.value = v }
+    fun setFpsConfig(v: String) { _fpsConfig.value = v }
+    fun toggleFpsExpanded() { _fpsExpanded.value = !_fpsExpanded.value }
+
     fun reset() {
+        _selectedTab.value = TabType.GRAPHICS
         _isPaused.value = false
         _isRelativeMouseMovement.value = false
         _isMouseDisabled.value = false
@@ -78,13 +127,21 @@ object XServerDrawerState {
         _showLogs.value = false
         _showMagnifier.value = true
         _lsfgEnabled.value = false
+        _lsfgMultiplier.value = 2
+        _lsfgQuality.value = "balanced"
+        _lsfgFlowScale.value = 100
+        _lsfgMaxLatency.value = 16
+        _lsfgGpuArch.value = "auto"
         _cursorExpanded.value = false
+        _fpsExpanded.value = false
+        _fpsConfig.value = ""
         onClose = null; onKeyboard = null; onInputControls = null
         onScreenEffects = null; onGraphicEngine = null; onVibration = null
         onToggleFullscreen = null; onPauseResume = null; onPipMode = null
         onActiveWindows = null; onTaskManager = null; onMagnifier = null
         onLogs = null; onExit = null; onLsfgToggle = null; onMoveCursorToTouchpoint = null
         onRelativeMouseMovement = null; onDisableMouse = null
+        onApplyLsfg = null; onResetLsfg = null; onFpsConfigApply = null
         onCursorExpandedChanged = null
     }
 }

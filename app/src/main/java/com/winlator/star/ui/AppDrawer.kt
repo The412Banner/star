@@ -30,7 +30,6 @@ import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Storefront
-import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -53,7 +52,6 @@ import com.winlator.star.ui.theme.Divider as DividerColor
 private fun iconFor(screen: Screen): ImageVector = when (screen) {
     Screen.Containers    -> Icons.Filled.FolderOpen
     Screen.Shortcuts     -> Icons.Filled.OpenInNew
-    Screen.Contents      -> Icons.Filled.Inventory2
     Screen.InputControls -> Icons.Filled.SportsEsports
     Screen.AdrenoTools   -> Icons.Filled.Memory
     Screen.Saves         -> Icons.Filled.Save
@@ -90,7 +88,6 @@ fun AppDrawerContent(
             .background(MaterialTheme.colorScheme.surface)
             .verticalScroll(rememberScrollState()),
     ) {
-        // ── Logo header ───────────────────────────────────────────────────────
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
@@ -113,7 +110,6 @@ fun AppDrawerContent(
 
         Divider(color = DividerColor)
 
-        // ── Emulation section ─────────────────────────────────────────────────
         SectionHeader("Emulation")
         DrawerItem(Screen.Shortcuts,     currentRoute, onNavigate)
         DrawerItem(Screen.Containers,    currentRoute, onNavigate)
@@ -121,18 +117,14 @@ fun AppDrawerContent(
 
         Divider(color = DividerColor, modifier = Modifier.padding(top = 4.dp))
 
-        // ── Tools section ─────────────────────────────────────────────────────
         SectionHeader("Tools")
         DrawerItem(Screen.InputControls, currentRoute, onNavigate)
-        DrawerItem(Screen.Contents,      currentRoute, onNavigate)
         DrawerItem(Screen.AdrenoTools,   currentRoute, onNavigate)
         DrawerItem(Screen.Saves,         currentRoute, onNavigate)
-        DrawerItem(Screen.Appearance,    currentRoute, onNavigate)
-        DrawerItem(Screen.LsfgSettings, currentRoute, onNavigate)
+        DrawerItem(Screen.LsfgSettings,  currentRoute, onNavigate)
 
         Divider(color = DividerColor, modifier = Modifier.padding(top = 4.dp))
 
-        // ── Game Stores section ───────────────────────────────────────────────
         SectionHeader("Game Stores")
         Screen.storeItems.forEach { screen ->
             DrawerStoreItem(screen, onLaunchStore)
@@ -140,7 +132,6 @@ fun AppDrawerContent(
 
         Divider(color = DividerColor, modifier = Modifier.padding(top = 4.dp))
 
-        // ── About And Support section ─────────────────────────────────────────
         SectionHeader("About And Support")
         DrawerIconItem(
             label = "About",

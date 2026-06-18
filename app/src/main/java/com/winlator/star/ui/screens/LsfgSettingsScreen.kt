@@ -11,9 +11,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -25,6 +27,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.preference.PreferenceManager
 import com.winlator.star.R
+import com.winlator.star.container.Container
+import com.winlator.star.ui.XServerDrawerState
+
+private val qualityNames = listOf("performance", "balanced", "quality")
+private val gpuArchNames = listOf("auto", "mali", "adreno")
 
 @Composable
 fun LsfgSettingsScreen() {
@@ -32,10 +39,11 @@ fun LsfgSettingsScreen() {
     val prefs = PreferenceManager.getDefaultSharedPreferences(context)
 
     var multiplier by remember { mutableIntStateOf(prefs.getInt("lsfg_default_multiplier", 2)) }
-    var quality by remember { mutableIntStateOf(prefs.getInt("lsfg_default_quality", 1)) } // 0=perf, 1=balanced, 2=quality
+    var quality by remember { mutableIntStateOf(prefs.getInt("lsfg_default_quality", 1)) }
     var flowScale by remember { mutableIntStateOf(prefs.getInt("lsfg_default_flow_scale", 100)) }
     var maxLatency by remember { mutableIntStateOf(prefs.getInt("lsfg_default_max_latency", 16)) }
-    var gpuArch by remember { mutableIntStateOf(prefs.getInt("lsfg_default_gpu_arch", 0)) } // 0=auto, 1=mali, 2=adreno
+    var gpuArch by remember { mutableIntStateOf(prefs.getInt("lsfg_default_gpu_arch", 0)) }
+    var showSavedNote by remember { mutableStateOf(false) }
 
     val qualityLabels = listOf(
         context.getString(R.string.lsfg_quality_performance),
@@ -47,6 +55,39 @@ fun LsfgSettingsScreen() {
         context.getString(R.string.lsfg_gpu_arch_mali),
         context.getString(R.string.lsfg_gpu_arch_adreno)
     )
+
+    fun applyGpuDefaults() {
+        val defaults = Container.getLsfgDefaults()
+        multiplier = defaults.multiplier
+        quality = qualityNames.indexOf(defaults.quality).coerceAtLeast(0)
+        flowScale = defaults.flowScale
+        maxLatency = defaults.maxLatency
+        gpuArch = gpuArchNames.indexOf(defaults.gpuArch).coerceAtLeast(0)
+    }
+
+    fun pushToXServer() {
+        try {
+            val state = XServerDrawerState
+            state.setLsfgMultiplier(multiplier)
+            state.setLsfgQuality(qualityNames.getOrElse(quality) { "balanced" })
+            state.setLsfgFlowScale(flowScale)
+            state.setLsfgMaxLatency(maxLatency)
+            state.setLsfgGpuArch(gpuArchNames.getOrElse(gpuArch) { "auto" })
+            state.onApplyLsfg?.run()
+        } catch (_: Exception) {}
+    }
+
+    fun saveDefaults() {
+        prefs.edit()
+            .putInt("lsfg_default_multiplier", multiplier)
+            .putInt("lsfg_default_quality", quality)
+            .putInt("lsfg_default_flow_scale", flowScale)
+            .putInt("lsfg_default_max_latency", maxLatency)
+            .putInt("lsfg_default_gpu_arch", gpuArch)
+            .apply()
+        showSavedNote = true
+        pushToXServer()
+    }
 
     Column(
         modifier = Modifier
@@ -60,13 +101,12 @@ fun LsfgSettingsScreen() {
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            text = "Lossless Scaling Frame Generation (LSFG) settings and tuning.",
+            text = "Vegas FrameGen settings and tuning.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(20.dp))
 
-        // ── Frame Multiplier ──────────────────────────────────────────────
         SectionLabel(context.getString(R.string.lsfg_multiplier))
         DescriptionText(context.getString(R.string.lsfg_multiplier_desc))
         Spacer(Modifier.height(4.dp))
@@ -77,7 +117,6 @@ fun LsfgSettingsScreen() {
         )
         Spacer(Modifier.height(16.dp))
 
-        // ── Quality ────────────────────────────────────────────────────────
         SectionLabel(context.getString(R.string.lsfg_quality))
         DescriptionText(context.getString(R.string.lsfg_quality_desc))
         Spacer(Modifier.height(4.dp))
@@ -88,7 +127,6 @@ fun LsfgSettingsScreen() {
         )
         Spacer(Modifier.height(16.dp))
 
-        // ── Flow Scale ─────────────────────────────────────────────────────
         SectionLabel(context.getString(R.string.lsfg_flow_scale))
         DescriptionText(context.getString(R.string.lsfg_flow_scale_desc))
         Slider(
@@ -105,9 +143,9 @@ fun LsfgSettingsScreen() {
         )
         Spacer(Modifier.height(16.dp))
 
-        // ── Max Input Latency ─────────────────────────────────────────────
         SectionLabel(context.getString(R.string.lsfg_max_latency))
         DescriptionText(context.getString(R.string.lsfg_max_latency_desc))
+        Spacer(Modifier.height(4.dp))
         Slider(
             value = maxLatency.toFloat(),
             onValueChange = { maxLatency = it.toInt() },
@@ -122,7 +160,6 @@ fun LsfgSettingsScreen() {
         )
         Spacer(Modifier.height(16.dp))
 
-        // ── GPU Architecture ──────────────────────────────────────────────
         SectionLabel(context.getString(R.string.lsfg_gpu_arch))
         DescriptionText(context.getString(R.string.lsfg_gpu_arch_desc))
         Spacer(Modifier.height(4.dp))
@@ -133,21 +170,42 @@ fun LsfgSettingsScreen() {
         )
         Spacer(Modifier.height(24.dp))
 
-        // ── Save Button ──────────────────────────────────────────────────
+        OutlinedButton(
+            onClick = { applyGpuDefaults() },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Reset to GPU Defaults")
+        }
+        Spacer(Modifier.height(8.dp))
+
+        if (showSavedNote) {
+            Surface(
+                color = MaterialTheme.colorScheme.primaryContainer,
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+            ) {
+                Text(
+                    text = "Saved \u2014 overrides any live XServer adjustments.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.padding(12.dp)
+                )
+            }
+        }
+
         Button(
-            onClick = {
-                prefs.edit()
-                    .putInt("lsfg_default_multiplier", multiplier)
-                    .putInt("lsfg_default_quality", quality)
-                    .putInt("lsfg_default_flow_scale", flowScale)
-                    .putInt("lsfg_default_max_latency", maxLatency)
-                    .putInt("lsfg_default_gpu_arch", gpuArch)
-                    .apply()
-            },
+            onClick = { saveDefaults() },
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Save as Defaults")
         }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = "Saving will override any live XServer adjustments.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth()
+        )
         Spacer(Modifier.height(16.dp))
     }
 }

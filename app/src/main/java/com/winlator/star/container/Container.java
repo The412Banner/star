@@ -20,6 +20,7 @@ import org.json.JSONObject;
 
 import java.io.File;
 import java.util.Iterator;
+import android.opengl.GLES10;
 
 public class Container {
     public enum XrControllerMapping {
@@ -31,12 +32,12 @@ public class Container {
     public static final String DEFAULT_GRAPHICS_DRIVER = "wrapper";
     public static final String DEFAULT_AUDIO_DRIVER = "alsa";
     public static final String DEFAULT_EMULATOR = "FEXCore";
-    public static final String DEFAULT_DXWRAPPER = "dxvk+vkd3d";
-    public static final String DEFAULT_DXWRAPPERCONFIG = "version=" + DefaultVersion.DXVK + ",framerate=0,async=0,asyncCache=0" + ",vkd3dVersion=" + DefaultVersion.VKD3D + ",vkd3dLevel=12_1" + ",ddrawrapper=" + Container.DEFAULT_DDRAWRAPPER + ",csmt=3" + ",gpuName=NVIDIA GeForce GTX 480" + ",videoMemorySize=2048" + ",strict_shader_math=1" + ",OffscreenRenderingMode=fbo" + ",renderer=gl";
+    public static final String DEFAULT_DXWRAPPER = "vegas+vkd3d";
+    public static final String DEFAULT_DXWRAPPERCONFIG = "version=" + DefaultVersion.getVegasDefault() + ",framerate=0,async=0,asyncCache=0" + ",vkd3dVersion=2.8" + ",vkd3dLevel=12_1" + ",ddrawrapper=" + Container.DEFAULT_DDRAWRAPPER + ",csmt=3" + ",gpuName=NVIDIA GeForce GTX 480" + ",videoMemorySize=2048" + ",strict_shader_math=1" + ",OffscreenRenderingMode=fbo" + ",renderer=gl";
     public static final String DEFAULT_GRAPHICSDRIVERCONFIG =
-            "vulkanVersion=1.3" + ";version=" + ";blacklistedExtensions=" + ";maxDeviceMemory=0" + ";presentMode=mailbox" + ";syncFrame=0" + ";disablePresentWait=0" + ";resourceType=auto" + ";bcnEmulation=auto" + ";bcnEmulationType=compute" + ";bcnEmulationCache=0" + ";gpuName=Device";
+            "vulkanVersion=1.3" + ";version=" + ";blacklistedExtensions=" + ";maxDeviceMemory=0" + ";presentMode=mailbox" + ";syncFrame=0" + ";disablePresentWait=0" + ";resourceType=auto" + ";bcnEmulation=auto" + ";bcnEmulationType=compute" + ";bcnEmulationCache=0" + ";gpuName=Device" + ";fdDevFeatures=0";
     public static final String DEFAULT_DDRAWRAPPER = "none";
-    public static final String DEFAULT_FPS_COUNTER_CONFIG = "showFPS=1,showCPULoad=0,showGPULoad=0,showRAM=0,showRenderer=0,showBatteryTemp=0,showBatteryVoltage=0,hudScale=100";
+    public static final String DEFAULT_FPS_COUNTER_CONFIG = "hudMode=horizontal,showFPS=1,showCPULoad=0,showGPULoad=0,showRAM=0,showRenderer=0,showBatteryTemp=0,hudScale=100";
     public static final String DEFAULT_WINCOMPONENTS = "direct3d=1,directsound=0,directmusic=0,directshow=0,directplay=0,xaudio=0,vcrun2010=1";
     public static final String FALLBACK_WINCOMPONENTS = "direct3d=1,directsound=1,directmusic=1,directshow=1,directplay=1,xaudio=1,vcrun2010=1";
     public static final String DEFAULT_DRIVES = "F:"+Environment.getExternalStorageDirectory().getAbsolutePath()+"D:"+Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
@@ -92,7 +93,43 @@ public class Container {
 
 
 
-    public Container(int id) {
+    
+    public static boolean isMaliGPU() {
+        try {
+            String renderer = GLES10.glGetString(GLES10.GL_RENDERER);
+            return renderer != null && renderer.contains("Mali");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public static ContainerDefaults getLsfgDefaults() {
+        boolean isMali = isMaliGPU();
+        int multiplier = 2;
+        String quality = isMali ? "performance" : "balanced";
+        int flowScale = isMali ? 50 : 100;
+        int maxLatency = isMali ? 8 : 16;
+        String gpuArch = isMali ? "mali" : "auto";
+        return new ContainerDefaults(multiplier, quality, flowScale, maxLatency, gpuArch);
+    }
+
+    public static class ContainerDefaults {
+        public final int multiplier;
+        public final String quality;
+        public final int flowScale;
+        public final int maxLatency;
+        public final String gpuArch;
+
+        public ContainerDefaults(int multiplier, String quality, int flowScale, int maxLatency, String gpuArch) {
+            this.multiplier = multiplier;
+            this.quality = quality;
+            this.flowScale = flowScale;
+            this.maxLatency = maxLatency;
+            this.gpuArch = gpuArch;
+        }
+    }
+
+public Container(int id) {
         this.id = id;
         this.name = "Container-"+id;
     }

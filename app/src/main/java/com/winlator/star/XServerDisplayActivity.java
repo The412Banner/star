@@ -92,6 +92,7 @@ import com.winlator.star.renderer.effects.ToonEffect;
 import com.winlator.star.renderer.effects.FSREffect;
 import com.winlator.star.renderer.effects.HDREffect;
 import com.winlator.star.widget.FrameRating;
+import com.winlator.star.widget.FrameRatingHorizontal;
 import com.winlator.star.widget.InputControlsView;
 import com.winlator.star.widget.LogView;
 import com.winlator.star.widget.TouchpadView;
@@ -158,6 +159,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
     private InputControlsManager inputControlsManager;
     private ImageFs imageFs;
     private FrameRating frameRating = null;
+    private FrameRatingHorizontal frameRatingHorizontal = null;
     private Runnable editInputControlsCallback;
     private Shortcut shortcut;
     private String graphicsDriver = Container.DEFAULT_GRAPHICS_DRIVER;
@@ -357,6 +359,24 @@ public class XServerDisplayActivity extends AppCompatActivity {
             boolean current = XServerDrawerState.INSTANCE.getLsfgEnabled();
             XServerDrawerState.INSTANCE.setLsfgEnabled(!current);
         };
+        state.onApplyLsfg               = () -> {
+            // LSFG settings changed - apply to the running environment
+        };
+        state.onResetLsfg               = () -> {
+            // Reset to GPU defaults using GLES detection
+            boolean isMali = false;
+            try {
+                String r = android.opengl.GLES10.glGetString(android.opengl.GLES10.GL_RENDERER);
+                if (r != null) isMali = r.contains("Mali");
+            } catch (Exception ignore) {
+            }
+            XServerDrawerState drawState = XServerDrawerState.INSTANCE;
+            drawState.setLsfgMultiplier(2);
+            drawState.setLsfgQuality(isMali ? "performance" : "balanced");
+            drawState.setLsfgFlowScale(isMali ? 50 : 100);
+            drawState.setLsfgMaxLatency(isMali ? 8 : 16);
+            drawState.setLsfgGpuArch(isMali ? "mali" : "auto");
+        };
         state.onToggleFullscreen       = () -> {
             xServerView.getRenderer().toggleFullscreen();
             touchpadView.toggleFullscreen();
@@ -373,7 +393,11 @@ public class XServerDisplayActivity extends AppCompatActivity {
         };
         state.onPipMode                = () -> enterPictureInPictureMode();
         state.onActiveWindows          = () -> showActiveWindowsDialog();
-        state.onTaskManager            = () -> showTaskManagerDialog();
+        state.onTaskManager            = () -> {
+            XServerDrawerState.INSTANCE.selectTab(com.winlator.star.ui.TabType.TASK_MANAGER);
+            XServerDialogState.INSTANCE.setTmProcesses(new ArrayList<>());
+            registerTmProcessInfoListener();
+        };
         state.onMagnifier              = () -> showMagnifierOverlay();
         state.onLogs                   = () -> XServerDialogState.INSTANCE.show(XServerDialogState.ActiveDialog.DEBUG);
         state.onExit                   = () -> exit();
@@ -387,6 +411,19 @@ public class XServerDisplayActivity extends AppCompatActivity {
             isMouseDisabled = !isMouseDisabled;
             state.setIsMouseDisabled(isMouseDisabled);
             touchpadView.setMouseEnabled(!isMouseDisabled);
+        };
+        String fpsCfg = container != null ? container.getFPSCounterConfig() : Container.DEFAULT_FPS_COUNTER_CONFIG;
+        state.setFpsConfig(fpsCfg);
+        state.onFpsConfigApply = (newConfig) -> {
+            if (newConfig == null) return;
+            runOnUiThread(() -> {
+                if (frameRating != null) frameRating.applyConfig(newConfig);
+                if (frameRatingHorizontal != null) frameRatingHorizontal.applyConfig(newConfig);
+            });
+            if (container != null) {
+                container.setFPSCounterConfig(newConfig);
+                container.saveData();
+            }
         };
 
         ComposeView drawerComposeView = findViewById(R.id.XServerDrawerComposeView);
@@ -550,6 +587,8 @@ public class XServerDisplayActivity extends AppCompatActivity {
             Log.d("XServerDisplayActivity", "XInput Disabled from Shortcut: " + xinputDisabledFromShortcut);
         }
 
+        // VEGAS runs its own native DLLs from vegas-<ver>.tzst — no alias to DXVK.
+
         this.graphicsDriverConfig = GraphicsDriverConfigDialog.parseGraphicsDriverConfig(graphicsDriverConfig);
         this.dxwrapperConfig = DXVKConfigDialog.parseConfig(dxwrapperConfig);
 
@@ -583,7 +622,10 @@ public class XServerDisplayActivity extends AppCompatActivity {
                     winStarted[0] = true;
                 }
                     
-                if (frameRatingWindowId == window.id) frameRating.update();
+                if (frameRatingWindowId == window.id) {
+                    if (frameRating != null) frameRating.update();
+                    if (frameRatingHorizontal != null) frameRatingHorizontal.update();
+                }
             }
            
             @Override
@@ -1023,6 +1065,16 @@ public class XServerDisplayActivity extends AppCompatActivity {
             String ddrawrapper = dxwrapperConfig.get("ddrawrapper");
             dxwrapper = dxvkWrapper + ";" + vkd3dWrapper + ";" + ddrawrapper;
         }
+        else if (dxwrapper.contains("vegas")) {
+            String vegasVersion = dxwrapperConfig.get("version");
+            if (vegasVersion == null || vegasVersion.isEmpty())
+                vegasVersion = DefaultVersion.getVegasDefault();
+            String ddrawrapper = dxwrapperConfig.get("ddrawrapper");
+            String vkd3dVersion = dxwrapperConfig.get("vkd3dVersion");
+            String vkd3dPart = (vkd3dVersion != null && !vkd3dVersion.isEmpty() && !vkd3dVersion.equals("none") && !vkd3dVersion.equals("None"))
+                ? "vkd3d-" + vkd3dVersion : "";
+            dxwrapper = "vegas-" + vegasVersion + ";" + vkd3dPart + ";" + ddrawrapper;
+        }
 
         if (!dxwrapper.equals(container.getExtra("dxwrapper"))) {
             if (extractDXWrapperFiles(dxwrapper)) {
@@ -1263,6 +1315,17 @@ public class XServerDisplayActivity extends AppCompatActivity {
 
         // Reset dxwrapper config
         dxwrapperConfig = null;
+
+        // Copy container LSFG config to drawer state
+        if (container != null) {
+            XServerDrawerState drawState = XServerDrawerState.INSTANCE;
+            drawState.setLsfgEnabled(container.isLsfgEnabled());
+            drawState.setLsfgMultiplier(container.getLsfgMultiplier());
+            drawState.setLsfgQuality(container.getLsfgQuality());
+            drawState.setLsfgFlowScale(container.getLsfgFlowScale());
+            drawState.setLsfgMaxLatency(container.getLsfgMaxLatency());
+            drawState.setLsfgGpuArch(container.getLsfgGpuArch());
+        }
         
     }
 
@@ -1311,14 +1374,29 @@ public class XServerDisplayActivity extends AppCompatActivity {
         }
 
         if (container != null && container.isShowFPS()) {
-    frameRating = new FrameRating(this, graphicsDriverConfig);
-    
-    // NEW: Apply the custom configuration string from the container
-    frameRating.applyConfig(container.getFPSCounterConfig());
-    
-    frameRating.setVisibility(View.GONE);
-    rootView.addView(frameRating);
-}
+            String fpsConfigString = container.getFPSCounterConfig();
+            com.winlator.star.core.KeyValueSet fpsConfig = new com.winlator.star.core.KeyValueSet(fpsConfigString);
+            boolean isHorizontal = fpsConfig.get("hudMode", "vertical").equals("horizontal");
+
+            if (isHorizontal) {
+                frameRatingHorizontal = new FrameRatingHorizontal(this);
+                FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    android.view.Gravity.TOP | android.view.Gravity.CENTER_HORIZONTAL
+                );
+                lp.topMargin = 10;
+                frameRatingHorizontal.setLayoutParams(lp);
+                frameRatingHorizontal.applyConfig(fpsConfigString);
+                frameRatingHorizontal.setVisibility(View.GONE);
+                rootView.addView(frameRatingHorizontal);
+            } else {
+                frameRating = new FrameRating(this, graphicsDriverConfig);
+                frameRating.applyConfig(fpsConfigString);
+                frameRating.setVisibility(View.GONE);
+                rootView.addView(frameRating);
+            }
+        }
 
         // Get the fullscreen stretched extra from the shortcut if available
         String shortcutFullscreenStretched = shortcut != null ? shortcut.getExtra("fullscreenStretched") : null;
@@ -1352,6 +1430,135 @@ public class XServerDisplayActivity extends AppCompatActivity {
         }
 
         AppUtils.observeSoftKeyboardVisibility(drawerLayout, renderer::setScreenOffsetYRelativeToCursor);
+
+        // Initialize inline tab states (Graphics, Controls, HUD)
+        initInlineTabStates(renderer);
+    }
+
+    private void initInlineTabStates(GLRenderer renderer) {
+        XServerDialogState ds = XServerDialogState.INSTANCE;
+
+        // Input Controls state
+        ArrayList<ControlsProfile> profiles = inputControlsManager.getProfiles(true);
+        ArrayList<String> profileNames = new ArrayList<>();
+        int selectedPosition = 0;
+        for (int i = 0; i < profiles.size(); i++) {
+            ControlsProfile profile = profiles.get(i);
+            if (inputControlsView.getProfile() != null && profile.id == inputControlsView.getProfile().id)
+                selectedPosition = i + 1;
+            profileNames.add(profile.getName());
+        }
+        ds.setInputProfiles(profileNames);
+        ds.setSelectedProfileIdx(selectedPosition);
+        ds.setShowTouchscreen(inputControlsView.isShowTouchscreenControls());
+        ds.setTimeoutEnabled(preferences.getBoolean("touchscreen_timeout_enabled", false));
+        ds.setHapticsEnabled(preferences.getBoolean("touchscreen_haptics_enabled", false));
+
+        ds.onInputControlsConfirm = (profileIndex, showTouchscreen, timeout, haptics) -> {
+            inputControlsView.setShowTouchscreenControls(showTouchscreen);
+            SharedPreferences.Editor editor = preferences.edit();
+            editor.putBoolean("touchscreen_timeout_enabled", timeout);
+            editor.putBoolean("touchscreen_haptics_enabled", haptics);
+            editor.apply();
+            if (timeout) startTouchscreenTimeout();
+            else touchpadView.setOnTouchListener(null);
+            if (profileIndex > 0) showInputControls(inputControlsManager.getProfiles().get(profileIndex - 1));
+            else hideInputControls();
+        };
+
+        ds.onInputControlsSettings = () -> {
+            int currentIdx = ds.getSelectedProfileIdx().getValue();
+            Intent intent = new Intent(this, MainActivity.class);
+            intent.putExtra("edit_input_controls", true);
+            intent.putExtra("selected_profile_id",
+                currentIdx > 0 ? inputControlsManager.getProfiles().get(currentIdx - 1).id : 0);
+            editInputControlsCallback = () -> {
+                hideInputControls();
+                inputControlsManager.loadProfiles(true);
+            };
+            controlsEditorActivityResultLauncher.launch(intent);
+        };
+
+        // Vibration state
+        if (winHandler != null) {
+            int max = winHandler.getMaxControllers();
+            java.util.List<kotlin.Pair<String, Boolean>> kSlots = new java.util.ArrayList<>();
+            for (int i = 0; i < max; i++) {
+                kSlots.add(new kotlin.Pair<>(
+                    getString(com.winlator.star.R.string.vibration_slot, i + 1),
+                    winHandler.isVibrationEnabledForSlot(i)));
+            }
+            ds.setVibrationSlots(kSlots);
+            ds.onVibrationSlotChanged = (slot, enabled) -> winHandler.setVibrationEnabledForSlot(slot, enabled);
+        }
+
+        // Screen Effects state
+        ColorEffect ce   = (ColorEffect)        renderer.getEffectComposer().getEffect(ColorEffect.class);
+        FXAAEffect  fxaa = (FXAAEffect)         renderer.getEffectComposer().getEffect(FXAAEffect.class);
+        CRTEffect   crt  = (CRTEffect)          renderer.getEffectComposer().getEffect(CRTEffect.class);
+        ToonEffect  toon = (ToonEffect)         renderer.getEffectComposer().getEffect(ToonEffect.class);
+        NTSCCombinedEffect ntsc = (NTSCCombinedEffect) renderer.getEffectComposer().getEffect(NTSCCombinedEffect.class);
+
+        ds.setSeBrightness(ce   != null ? ce.getBrightness() * 100f : 0f);
+        ds.setSeContrast  (ce   != null ? ce.getContrast()   * 100f : 0f);
+        ds.setSeGamma     (ce   != null ? ce.getGamma()             : 1.0f);
+        ds.setSeFxaa      (fxaa != null);
+        ds.setSeCrt       (crt  != null);
+        ds.setSeToon      (toon != null);
+        ds.setSeNtsc      (ntsc != null);
+
+        java.util.Set<String> rawSet = new java.util.LinkedHashSet<>(
+            preferences.getStringSet("screen_effect_profiles", new java.util.LinkedHashSet<>()));
+        final ArrayList<String> seProfileNames = new ArrayList<>();
+        for (String p : rawSet) seProfileNames.add(p.split(":")[0]);
+        ds.setSeProfiles(seProfileNames);
+        String currentProfile = getScreenEffectProfile();
+        int selIdx = 0;
+        for (int i = 0; i < seProfileNames.size(); i++) {
+            if (seProfileNames.get(i).equals(currentProfile)) { selIdx = i + 1; break; }
+        }
+        ds.setSeSelectedProfile(selIdx);
+
+        ds.onScreenEffectsApply = (brightness, contrast, gamma, fxaaEn, crtEn, toonEn, ntscEn, profileIndex) -> {
+            if (renderer == null) return;
+            applyScreenEffects(renderer, brightness, contrast, gamma, fxaaEn, crtEn, toonEn, ntscEn);
+            if (profileIndex > 0 && profileIndex - 1 < seProfileNames.size()) {
+                String name = seProfileNames.get(profileIndex - 1);
+                saveScreenEffectProfile(name, brightness, contrast, gamma, fxaaEn, crtEn, toonEn, ntscEn);
+                setScreenEffectProfile(name);
+            }
+        };
+
+        ds.onInitGraphicsTab = () -> {};
+
+        // FSR state
+        FSREffect fsr = (FSREffect) renderer.getEffectComposer().getEffect(FSREffect.class);
+        HDREffect hdr = (HDREffect) renderer.getEffectComposer().getEffect(HDREffect.class);
+        ds.setFsrEnabled(fsr != null);
+        ds.setFsrMode   (fsr != null ? fsr.getMode()  : 0);
+        ds.setFsrLevel  (fsr != null ? fsr.getLevel() : 1.0f);
+        ds.setHdrEnabled(hdr != null);
+
+        ds.onFsrUpdate = (enabled, mode, level, hdrEn) -> {
+            if (renderer == null) return;
+            FSREffect cur = (FSREffect) renderer.getEffectComposer().getEffect(FSREffect.class);
+            if (cur != null) renderer.getEffectComposer().removeEffect(cur);
+            if (enabled) {
+                FSREffect newFsr = new FSREffect();
+                newFsr.setLevel(level);
+                newFsr.setMode(mode);
+                renderer.getEffectComposer().addEffect(newFsr);
+            }
+            HDREffect curHdr = (HDREffect) renderer.getEffectComposer().getEffect(HDREffect.class);
+            if (curHdr != null) renderer.getEffectComposer().removeEffect(curHdr);
+            if (hdrEn) {
+                HDREffect newHdr = new HDREffect();
+                newHdr.setStrength(1.0f);
+                renderer.getEffectComposer().addEffect(newHdr);
+            }
+        };
+
+        setupTmCallbacks();
     }
 
 
@@ -1583,6 +1790,9 @@ public class XServerDisplayActivity extends AppCompatActivity {
             envVars.put("WRAPPER_NO_PATCH_OPCONSTCOMP", "1");
         }
     }
+    else if (dxwrapper.contains("vegas")) {
+        DXVKConfigDialog.setEnvVars(this, dxwrapperConfig, envVars);
+    }
     else {
         WineD3DConfigDialog.setEnvVars(this, dxwrapperConfig, envVars);
     }
@@ -1673,6 +1883,10 @@ public class XServerDisplayActivity extends AppCompatActivity {
 
     String bcnEmulationCache = graphicsDriverConfig.get("bcnEmulationCache");
     if (bcnEmulationCache != null) envVars.put("WRAPPER_USE_BCN_CACHE", bcnEmulationCache);
+
+    String fdDevFeatures = graphicsDriverConfig.get("fdDevFeatures");
+    if (fdDevFeatures != null && fdDevFeatures.equals("1"))
+        envVars.put("FD_DEV_FEATURES", "enable_tp_ubwc_flag_hint=1");
 
     if (vkbasaltConfig != null && !vkbasaltConfig.isEmpty()) {
         envVars.put("ENABLE_VKBASALT", "1");
@@ -1809,6 +2023,83 @@ else {
 
 Log.d(TAG, "Finished extraction of DXVK wrapper files, version: " + dxwrapper);
 return true;
+} else if (dxwrapper.contains("vegas")) {
+    Log.d(TAG, "Extracting VEGAS wrapper files: " + dxwrapper);
+
+    String[] parts = dxwrapper.split(";");
+    String vegasWrapper = parts[0];
+    String vkd3dWrapper = parts.length > 1 ? parts[1] : "";
+    String ddrawrapper = parts.length > 2 ? parts[2] : "";
+
+    // Extract vegas DLL archive
+    // vegas WCPs use CONTENT_TYPE_VEGAS, verName like "vegas-2.7.3"
+    // getProfileByEntryName("vegas-2.7.3") can't resolve because the installed
+    // profile has verName="vegas-2.7.3" and verCode≥1, so we search manually.
+    ContentProfile vegasProfile = contentsManager.getProfileByEntryName(vegasWrapper);
+    if (vegasProfile == null) {
+        String needVersion = vegasWrapper.substring("vegas-".length());
+        Log.d(TAG, "Searching VEGAS profiles for version: " + needVersion);
+        for (ContentProfile p : contentsManager.getProfiles(ContentProfile.ContentType.CONTENT_TYPE_VEGAS)) {
+            String pVer = (p.verName != null && p.verName.startsWith("vegas-"))
+                    ? p.verName.substring("vegas-".length()) : p.verName;
+            if (needVersion.equals(pVer)) {
+                vegasProfile = p;
+                Log.d(TAG, "Found matching VEGAS content profile: " + ContentsManager.getEntryName(p));
+                break;
+            }
+        }
+    }
+    if (vegasProfile != null) {
+        Log.d(TAG, "Applying user-defined VEGAS content profile: " + vegasWrapper);
+        contentsManager.applyContent(vegasProfile);
+    } else {
+        Log.d(TAG, "Extracting fallback VEGAS .tzst archive: " + vegasWrapper);
+        TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "dxwrapper/" + vegasWrapper + ".tzst", windowsDir, onExtractFileListener);
+    }
+
+    // Extract VKD3D if part of vegas+vkd3d combo
+    boolean hasVkd3d = vkd3dWrapper != null && !vkd3dWrapper.isEmpty() && !vkd3dWrapper.contains("None");
+    if (hasVkd3d) {
+        Log.d(TAG, "Extracting VKD3D wrapper files for VEGAS combo: " + vkd3dWrapper);
+        ContentProfile vkd3dProfile = contentsManager.getProfileByEntryName(vkd3dWrapper);
+        if (vkd3dProfile != null) {
+            Log.d(TAG, "Applying user-defined VKD3D content profile: " + vkd3dWrapper);
+            contentsManager.applyContent(vkd3dProfile);
+        } else {
+            Log.d(TAG, "Extracting VKD3D .tzst archive: " + vkd3dWrapper);
+            TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "dxwrapper/" + vkd3dWrapper + ".tzst", windowsDir, onExtractFileListener);
+        }
+    } else {
+        // Restore original d3d12 (vanilla vegas does not include VKD3D)
+        restoreOriginalDllFiles(new String[]{"d3d12.dll", "d3d12core.dll"});
+    }
+
+    // Extract nglide
+    Log.d(TAG, "Extracting nglide wrapper");
+    TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "ddrawrapper/nglide.tzst", windowsDir, onExtractFileListener);
+
+    // Handle ddrawrapper
+    if (ddrawrapper.contains("None")) {
+        Log.d(TAG, "No DDraw wrapper selected, restoring original ddraw files");
+        restoreOriginalDllFiles(new String[]{ "ddraw.dll", "d3dimm.dll" });
+    }
+    else {
+        if (ddrawrapper.equals("cnc-ddraw")) {
+            envVars.put("CNC_DDRAW_CONFIG_FILE", "C:\\windows\\syswow64\\ddraw.ini");
+        }
+        else if (ddrawrapper.equals("dgvoodoo")) {
+            Log.d(TAG, "Applying dgvoodoo ddrawrapper");
+            TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "ddrawrapper/dgvoodoo.tzst", windowsDir, onExtractFileListener);
+        }
+
+        Log.d(TAG, "Extracting ddrawrapper " + ddrawrapper);
+        if (!ddrawrapper.equals("dgvoodoo")) {
+            TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "ddrawrapper/" + ddrawrapper + ".tzst", windowsDir, onExtractFileListener);
+        }
+    }
+
+    Log.d(TAG, "Finished extraction of VEGAS wrapper files: " + dxwrapper);
+    return true;
 } else if (dxwrapper.contains("wined3d")) {
     Log.d(TAG, "Restoring original DLL files for wined3d.");
     restoreOriginalDllFiles(dlls);
@@ -2042,32 +2333,48 @@ return true;
     }
 
     private void changeFrameRatingVisibility(Window window, Property property) {
-    if (frameRating == null) return;
+        if (frameRating == null && frameRatingHorizontal == null) return;
 
-    if (property != null) {
-        if (frameRatingWindowId == -1 && property.nameAsString().contains("_MESA_DRV")) {
-            frameRatingWindowId = window.id;
-            Log.d("XServerDisplayActivity", "Showing hud for Window " + window.getName());
-            
-            // NEW: Ensure the HUD becomes visible when the driver property is detected
-            runOnUiThread(() -> frameRating.setVisibility(View.VISIBLE));
-            
-            frameRating.update();
+        if (property != null) {
+            if (frameRatingWindowId == -1 && property.nameAsString().contains("_MESA_DRV")) {
+                frameRatingWindowId = window.id;
+                Log.d("XServerDisplayActivity", "Showing hud for Window " + window.getName());
+
+                runOnUiThread(() -> {
+                    if (frameRating != null) frameRating.setVisibility(View.VISIBLE);
+                    if (frameRatingHorizontal != null) frameRatingHorizontal.setVisibility(View.VISIBLE);
+                });
+
+                if (frameRating != null) frameRating.update();
+                if (frameRatingHorizontal != null) frameRatingHorizontal.update();
+            }
+            if (property.nameAsString().contains("_MESA_DRV_ENGINE_NAME")) {
+                runOnUiThread(() -> {
+                    if (frameRating != null) frameRating.setRenderer(property.toString());
+                    if (frameRatingHorizontal != null) frameRatingHorizontal.setRenderer(property.toString());
+                });
+            }
+            if (property.nameAsString().contains("_MESA_DRV_GPU_NAME")) {
+                runOnUiThread(() -> {
+                    if (frameRating != null) frameRating.setGpuName(property.toString());
+                });
+            }
         }
-        if (property.nameAsString().contains("_MESA_DRV_ENGINE_NAME")) {
-            runOnUiThread(() -> frameRating.setRenderer(property.toString()));
-        }
-        if (property.nameAsString().contains("_MESA_DRV_GPU_NAME")) {
-            runOnUiThread(() -> frameRating.setGpuName(property.toString()));
+        else if (frameRatingWindowId != -1) {
+            frameRatingWindowId = -1;
+            Log.d("XServerDisplayActivity", "Hiding hud for Window " + window.getName());
+            runOnUiThread(() -> {
+                if (frameRating != null) {
+                    frameRating.setVisibility(View.GONE);
+                    frameRating.reset();
+                }
+                if (frameRatingHorizontal != null) {
+                    frameRatingHorizontal.setVisibility(View.GONE);
+                    frameRatingHorizontal.reset();
+                }
+            });
         }
     }
-    else if (frameRatingWindowId != -1) {
-        frameRatingWindowId = -1;
-        Log.d("XServerDisplayActivity", "Hiding hud for Window " + window.getName());
-        runOnUiThread(() -> frameRating.setVisibility(View.GONE));
-        runOnUiThread(() -> frameRating.reset());
-    }
-}
 
 
     public String getScreenEffectProfile() {
@@ -2334,7 +2641,7 @@ return true;
         ds.setMagnifierVisible(true);
     }
 
-    private void showTaskManagerDialog() {
+    private void setupTmCallbacks() {
         XServerDialogState ds = XServerDialogState.INSTANCE;
 
         ds.onTmRefresh = () -> {
@@ -2361,6 +2668,13 @@ return true;
             if (winHandler != null) winHandler.setProcessAffinity(pid, mask);
         };
 
+        registerTmProcessInfoListener();
+
+        updateTmCpuMemory(ds);
+    }
+
+    private void registerTmProcessInfoListener() {
+        XServerDialogState ds = XServerDialogState.INSTANCE;
         if (winHandler != null) {
             winHandler.setOnGetProcessInfoListener(new OnGetProcessInfoListener() {
                 private final ArrayList<XServerDialogState.TmProcess> buffer = new ArrayList<>();
@@ -2387,9 +2701,6 @@ return true;
                 }
             });
         }
-
-        updateTmCpuMemory(ds);
-        ds.show(XServerDialogState.ActiveDialog.TASK_MANAGER);
     }
 
     private void updateTmCpuMemory(XServerDialogState ds) {
